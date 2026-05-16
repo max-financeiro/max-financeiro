@@ -39,7 +39,7 @@
 - `public.user_profiles` — extensão de auth.users com role
 - `public.user_org_access` — autorização multi-org
 - `audit.audit_log` — WORM com hash chain
-- Funções helper: `auth.user_has_org_access`, `auth.user_has_org_access_recursive`, `auth.user_has_role`, `audit.log_event`, `audit.compute_hash_chain`
+- Funções helper: `public.user_has_org_access`, `public.user_has_org_access_recursive`, `public.user_has_role`, `public.current_user_role`, `audit.log_event`, `audit.compute_hash_chain` (helpers em `public` porque schema `auth` é gerenciado pelo Supabase e bloqueia DDL)
 
 ## A criar nas próximas sprints
 

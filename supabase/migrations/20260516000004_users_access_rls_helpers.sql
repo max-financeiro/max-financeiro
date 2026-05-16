@@ -2,7 +2,10 @@
 -- 20260516000004_users_access_rls_helpers.sql
 -- ------------------------------------------------------------
 -- user_profiles + user_org_access + funções helper de autorização.
--- Tudo que vier depois usa auth.user_has_org_access() nas policies.
+-- Tudo que vier depois usa public.user_has_org_access() nas policies.
+--
+-- NOTA: helpers ficam em `public` (não `auth`) — schema auth é gerenciado
+-- pelo Supabase e bloqueia DDL. auth.uid() permanece referenciável.
 -- ============================================================
 
 -- Perfil do usuário (extensão de auth.users)
@@ -45,11 +48,11 @@ CREATE INDEX idx_user_org_access_organization_id ON public.user_org_access(organ
   WHERE revoked_at IS NULL;
 
 -- ============================================================
--- Helpers de autorização — usados em TODA policy daqui em diante
+-- Helpers de autorização — em public, referenciam auth.uid()
 -- ============================================================
 
 -- Vê se o user atual tem acesso à org. STABLE → cached por transação.
-CREATE OR REPLACE FUNCTION auth.user_has_org_access(p_org_id UUID)
+CREATE OR REPLACE FUNCTION public.user_has_org_access(p_org_id UUID)
 RETURNS BOOLEAN
 LANGUAGE sql
 STABLE
@@ -66,7 +69,7 @@ AS $$
 $$;
 
 -- Acesso recursivo: ascende a hierarquia (acesso ao group dá acesso a todas as company/branch filhas)
-CREATE OR REPLACE FUNCTION auth.user_has_org_access_recursive(p_org_id UUID)
+CREATE OR REPLACE FUNCTION public.user_has_org_access_recursive(p_org_id UUID)
 RETURNS BOOLEAN
 LANGUAGE sql
 STABLE
@@ -90,7 +93,7 @@ AS $$
 $$;
 
 -- Role do user atual (snapshot)
-CREATE OR REPLACE FUNCTION auth.current_user_role()
+CREATE OR REPLACE FUNCTION public.current_user_role()
 RETURNS TEXT
 LANGUAGE sql
 STABLE
@@ -100,20 +103,20 @@ AS $$
   SELECT role FROM public.user_profiles WHERE user_id = auth.uid();
 $$;
 
-CREATE OR REPLACE FUNCTION auth.user_has_role(p_roles TEXT[])
+CREATE OR REPLACE FUNCTION public.user_has_role(p_roles TEXT[])
 RETURNS BOOLEAN
 LANGUAGE sql
 STABLE
 SECURITY DEFINER
 SET search_path = public, pg_catalog
 AS $$
-  SELECT auth.current_user_role() = ANY(p_roles);
+  SELECT public.current_user_role() = ANY(p_roles);
 $$;
 
-GRANT EXECUTE ON FUNCTION auth.user_has_org_access(UUID) TO authenticated, service_role;
-GRANT EXECUTE ON FUNCTION auth.user_has_org_access_recursive(UUID) TO authenticated, service_role;
-GRANT EXECUTE ON FUNCTION auth.current_user_role() TO authenticated, service_role;
-GRANT EXECUTE ON FUNCTION auth.user_has_role(TEXT[]) TO authenticated, service_role;
+GRANT EXECUTE ON FUNCTION public.user_has_org_access(UUID) TO authenticated, service_role;
+GRANT EXECUTE ON FUNCTION public.user_has_org_access_recursive(UUID) TO authenticated, service_role;
+GRANT EXECUTE ON FUNCTION public.current_user_role() TO authenticated, service_role;
+GRANT EXECUTE ON FUNCTION public.user_has_role(TEXT[]) TO authenticated, service_role;
 
 -- ============================================================
 -- RLS — user_profiles
@@ -131,7 +134,7 @@ CREATE POLICY "Master/Manager see all profiles"
   ON public.user_profiles
   FOR SELECT
   TO authenticated
-  USING (auth.user_has_role(ARRAY['master','financial_manager']));
+  USING (public.user_has_role(ARRAY['master','financial_manager']));
 
 CREATE POLICY "Users update only own non-role fields"
   ON public.user_profiles
@@ -148,7 +151,7 @@ CREATE POLICY "Master can insert profiles"
   ON public.user_profiles
   FOR INSERT
   TO authenticated
-  WITH CHECK (auth.user_has_role(ARRAY['master']));
+  WITH CHECK (public.user_has_role(ARRAY['master']));
 
 -- ============================================================
 -- RLS — user_org_access
@@ -166,7 +169,7 @@ CREATE POLICY "Master/Manager see all access rows"
   ON public.user_org_access
   FOR SELECT
   TO authenticated
-  USING (auth.user_has_role(ARRAY['master','financial_manager']));
+  USING (public.user_has_role(ARRAY['master','financial_manager']));
 
 -- INSERT/UPDATE/DELETE: somente via service role (Edge Function de admin),
 -- nunca direto pelo client. Sem policy = denied.
@@ -178,6 +181,6 @@ CREATE POLICY "Users see only orgs they have access to (recursive)"
   ON public.organizations
   FOR SELECT
   TO authenticated
-  USING (auth.user_has_org_access_recursive(id));
+  USING (public.user_has_org_access_recursive(id));
 
 -- INSERT/UPDATE/DELETE de organizations: somente master via service role
