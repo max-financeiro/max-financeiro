@@ -1,5 +1,6 @@
 import { redirect } from 'next/navigation';
 import { createClient } from '@/lib/supabase/server';
+import { Sidebar } from './Sidebar';
 
 /**
  * Layout do admin (app.financeiromaxfem.com.br).
@@ -19,19 +20,13 @@ export default async function AdminLayout({ children }: { children: React.ReactN
     .eq('user_id', user.id)
     .maybeSingle();
 
-  if (!profile) {
-    // Usuário autenticado mas sem profile: provavelmente recém-criado e ainda não onboarded
-    redirect('/onboarding/pending');
-  }
-
-  if (profile.role === 'supplier') {
-    redirect('/portal');
-  }
+  if (!profile) redirect('/onboarding/pending');
+  if (profile.role === 'supplier') redirect('/portal');
 
   return (
     <div className="min-h-screen bg-maxfem-cream">
       <header className="bg-white border-b border-neutral-200">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-14 flex items-center justify-between">
+        <div className="px-4 sm:px-6 lg:px-8 h-14 flex items-center justify-between">
           <div className="flex items-center gap-2">
             <span className="font-display text-lg font-semibold text-maxfem-pink">
               Financeiro Maxfem
@@ -50,7 +45,11 @@ export default async function AdminLayout({ children }: { children: React.ReactN
           </div>
         </div>
       </header>
-      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">{children}</main>
+
+      <div className="flex">
+        <Sidebar />
+        <main className="flex-1 px-4 sm:px-6 lg:px-8 py-8 max-w-7xl">{children}</main>
+      </div>
     </div>
   );
 }
