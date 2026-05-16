@@ -27,16 +27,19 @@
 
 ## 0.3 Supabase (3 projetos isolados)
 
+**Padrão arquitetural confirmado:** 1 projeto Supabase × 3 ambientes (dev/staging/prod). Subdomínios `app.`/`portal.`/`api.` são roteamento Next.js+Vercel — **todos falam com o mesmo banco** dentro de cada ambiente.
+
 - [x] Conta Supabase
 - [~] **3 projetos Pro** em `sa-east-1`:
-  - [ ] `financeiro-maxfem-dev`
+  - [x] `financeiro-maxfem-dev` (ref `aizoevovzuvrcvntpzft`)
   - [ ] `financeiro-maxfem-staging`
   - [ ] `financeiro-maxfem-prod`
 - [ ] Senha Postgres forte gerada e salva no 1Password
-- [ ] Anotar `Project Ref` + `Anon Key` + `Service Role Key` de cada
-- [ ] PITR 7 dias ativado
-- [ ] Extensões ativadas: `uuid-ossp`, `pgcrypto`, `pgvector`, `pg_cron`
-- [ ] Supabase Vault com slots vazios pros segredos
+- [x] Anotar `Project Ref` + `Anon Key` do dev (compartilhados via chat — anon é público por design)
+- [ ] **Service Role Key do dev** — você pega no Dashboard → Settings → API → `service_role` e salva no `.env.local` + 1Password. Nunca no chat nem commit.
+- [ ] PITR 7 dias ativado (em prod, quando criar)
+- [ ] Extensões ativadas via migration: `uuid-ossp`, `pgcrypto` (já nas migrations 0001), `pgvector` e `pg_cron` (na V1)
+- [ ] Supabase Vault com slots vazios pros segredos (na criação do staging/prod)
 
 ## 0.4 Vercel (3 projetos isolados)
 
