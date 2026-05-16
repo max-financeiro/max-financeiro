@@ -1,5 +1,7 @@
 # Supabase config - Sistema Financeiro Maxfem
-# Project ref dev/staging/prod ficam no .env.local de cada ambiente (NUNCA aqui)
+# project_id identifica o projeto local pra `supabase start/stop/status`.
+# Não confundir com SUPABASE_PROJECT_REF (remote, em .env.local).
+project_id = "financeiro-maxfem"
 
 [api]
 enabled = true
