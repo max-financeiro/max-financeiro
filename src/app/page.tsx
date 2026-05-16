@@ -2,10 +2,8 @@ import { redirect } from 'next/navigation';
 import { createClient } from '@/lib/supabase/server';
 
 /**
- * Home → redireciona conforme estado de auth.
- * - Sem user → /login (middleware já faz, mas dupla segurança)
- * - Com user role admin → /dashboard
- * - Com user role supplier → /portal
+ * Home → redireciona conforme estado.
+ * Middleware já garante user logado AAL2 chegando aqui.
  */
 export default async function HomePage() {
   const supabase = await createClient();
@@ -13,9 +11,7 @@ export default async function HomePage() {
     data: { user },
   } = await supabase.auth.getUser();
 
-  if (!user) {
-    redirect('/login');
-  }
+  if (!user) redirect('/login');
 
   const { data: profile } = await supabase
     .from('user_profiles')
@@ -23,9 +19,7 @@ export default async function HomePage() {
     .eq('user_id', user.id)
     .maybeSingle();
 
-  if (profile?.role === 'supplier') {
-    redirect('/portal');
-  }
-
+  if (!profile) redirect('/onboarding/pending');
+  if (profile.role === 'supplier') redirect('/portal');
   redirect('/dashboard');
 }

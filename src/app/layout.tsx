@@ -22,11 +22,8 @@ export default async function RootLayout({ children }: { children: React.ReactNo
 
   return (
     <html lang="pt-BR" suppressHydrationWarning>
-      <head>
-        {/* Nonce em meta pra scripts inline futuros referenciarem se necessário */}
-        {nonce && <meta name="csp-nonce" content={nonce} />}
-      </head>
-      <body className="min-h-screen bg-stone-50 text-neutral-900 antialiased">{children}</body>
+      <head>{nonce && <meta name="csp-nonce" content={nonce} />}</head>
+      <body className="min-h-screen antialiased">{children}</body>
     </html>
   );
 }

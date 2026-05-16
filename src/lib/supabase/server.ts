@@ -4,9 +4,11 @@
  * Usa ANON KEY com cookies da sessão do usuário — RLS aplica conforme o auth.uid()
  * do user logado. NUNCA importar service role aqui em código de página.
  */
-import { createServerClient } from '@supabase/ssr';
+import { createServerClient, type CookieOptions } from '@supabase/ssr';
 import { cookies } from 'next/headers';
 import type { Database } from '@/types/supabase';
+
+type CookieToSet = { name: string; value: string; options: CookieOptions };
 
 export async function createClient() {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -23,7 +25,7 @@ export async function createClient() {
       getAll() {
         return cookieStore.getAll();
       },
-      setAll(cookiesToSet) {
+      setAll(cookiesToSet: CookieToSet[]) {
         try {
           for (const { name, value, options } of cookiesToSet) {
             cookieStore.set(name, value, options);

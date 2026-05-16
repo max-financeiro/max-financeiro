@@ -1,31 +1,20 @@
 import { defineConfig } from 'vitest/config';
 import path from 'node:path';
 
+/**
+ * Configuração consolidada de testes.
+ * Unit tests em src/**, RLS tests em tests/rls/**.
+ * Separação por suite via `vitest run --project <name>` quando workspace for adicionada
+ * (vitest v3+). Por enquanto, suites convivem com naming distinto.
+ */
 export default defineConfig({
   test: {
     globals: false,
     environment: 'node',
-    workspace: [
-      {
-        extends: true,
-        test: {
-          name: 'unit',
-          include: ['src/**/*.test.ts', 'src/**/*.test.tsx'],
-          exclude: ['tests/rls/**'],
-        },
-      },
-      {
-        extends: true,
-        test: {
-          name: 'rls',
-          include: ['tests/rls/**/*.test.ts'],
-          // RLS suite roda em serial — evita race conditions em fixtures compartilhadas
-          maxConcurrency: 1,
-          sequence: { concurrent: false },
-          testTimeout: 30000,
-        },
-      },
-    ],
+    include: ['src/**/*.test.{ts,tsx}', 'tests/**/*.test.ts'],
+    // RLS suite roda em serial pra evitar race em fixtures compartilhadas
+    fileParallelism: false,
+    testTimeout: 30000,
   },
   resolve: {
     alias: {

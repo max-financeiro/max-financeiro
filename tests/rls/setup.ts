@@ -11,6 +11,9 @@ const SUPABASE_URL = process.env.SUPABASE_URL ?? 'http://127.0.0.1:54321';
 const SUPABASE_ANON_KEY = process.env.SUPABASE_ANON_KEY ?? '';
 const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY ?? '';
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type AnyClient = SupabaseClient<any, any, any>;
+
 if (!SUPABASE_ANON_KEY || !SUPABASE_SERVICE_ROLE_KEY) {
   throw new Error(
     'RLS tests precisam de SUPABASE_ANON_KEY e SUPABASE_SERVICE_ROLE_KEY. Rodar via `npx supabase start` primeiro.',
@@ -18,7 +21,7 @@ if (!SUPABASE_ANON_KEY || !SUPABASE_SERVICE_ROLE_KEY) {
 }
 
 // Cliente admin (service role) — usado APENAS pra setup/teardown
-export const adminClient: SupabaseClient = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
+export const adminClient: AnyClient = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
   auth: { autoRefreshToken: false, persistSession: false },
 });
 
@@ -26,7 +29,7 @@ export const adminClient: SupabaseClient = createClient(SUPABASE_URL, SUPABASE_S
  * Cria cliente autenticado como o user passado. Simula sessão real.
  * NUNCA usar service role no client retornado — defeats the purpose.
  */
-export async function createClientAs(email: string, password: string): Promise<SupabaseClient> {
+export async function createClientAs(email: string, password: string): Promise<AnyClient> {
   const client = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
   const { error } = await client.auth.signInWithPassword({ email, password });
   if (error) throw new Error(`Falha ao logar como ${email}: ${error.message}`);
