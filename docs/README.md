@@ -7,9 +7,11 @@ Documentos vivos. Atualizados conforme o projeto evolui.
 | [PRD.md](PRD.md) | Product Requirements: objetivos, KPIs, stakeholders, escopo MVP/V1/V2, riscos | Antes de começar |
 | [ARCHITECTURE.md](ARCHITECTURE.md) | Stack, modelo de dados, fluxos, integrações | Em qualquer decisão técnica |
 | [SECURITY.md](SECURITY.md) | Defense-in-depth, RLS, anti-fraude, LGPD, checklist go-live | Em qualquer decisão de segurança |
-| [PHASE-0-CHECKLIST.md](PHASE-0-CHECKLIST.md) | Ações pendentes pra destravar Sprint 0 | Agora |
+| [PHASE-0-CHECKLIST.md](PHASE-0-CHECKLIST.md) | Status do provisionamento de infra (parcialmente done) | Agora |
+| [SPRINT-PLAN.md](SPRINT-PLAN.md) | Sequência das sprints + dependências + o que roda sem Inter/BTG | Agora |
+| [PAYMENT-PROVIDER-CONTRACT.md](PAYMENT-PROVIDER-CONTRACT.md) | Abstração que permite Sprints 1-4 sem esperar Inter | Sprint 3 |
 | [RUNBOOK.md](RUNBOOK.md) | Resposta a incidentes (Inter caiu, vazamento, fraude) | Em emergência |
-| [SPRINT-0-INTER-SPEC.md](SPRINT-0-INTER-SPEC.md) | Critérios de aceitação do spike Inter | Antes da Sprint 0 |
+| [SPRINT-0-INTER-SPEC.md](SPRINT-0-INTER-SPEC.md) | Critérios de aceitação do spike Inter | Quando Inter API ativada |
 
 ## Convenções
 

@@ -1,145 +1,143 @@
 # Fase 0 — Checklist de Provisionamento
 
-**Objetivo:** infra crua, vazia, isolada, segura, pronta pra receber código.
+**Status atual (2026-05-16):** contas e domínio provisionados. Faltam configurações finas (DNSSEC, CAA, allowlists, 2FA, YubiKey) e credenciais bancárias.
 
-Cada item tem responsável e link/passo concreto. Marque como `[x]` quando concluído.
+**Convenção:** `[x]` = feito · `[ ]` = pendente · `[~]` = parcial
 
 ---
 
 ## 0.1 Domínio
 
-- [ ] Registrar `financeiromaxfem.com.br` no [Registro.br](https://registro.br) — R$ 40/ano
-  - **Responsável:** Thiago
-  - Configurar nameservers pra Cloudflare logo após o registro
-- [ ] Confirmar que `www.financeiromaxfem.com.br` redireciona pro app (configurar após criar Vercel)
+- [x] Registrar `financeiromaxfem.com.br`
+- [ ] Configurar nameservers pra Cloudflare
+- [ ] Confirmar redirect `www.` → app (configurar após Vercel domínio)
 
 ## 0.2 Cloudflare (DNS + segurança de borda)
 
-- [ ] Criar conta Cloudflare Pro (US$ 20/mês) e adicionar `financeiromaxfem.com.br`
-  - **Responsável:** Thiago
-- [ ] Configurar nameservers no Registro.br pra apontar pra Cloudflare
-- [ ] Ativar **DNSSEC**
-- [ ] Adicionar **CAA records** (apenas `letsencrypt.org` e `pki.goog` autorizados)
-- [ ] Configurar **DMARC + SPF + DKIM** (após criar Resend)
-- [ ] Ativar **WAF + Bot Fight Mode**
-- [ ] Subdomínios planejados (criar registros CNAME após Vercel pronto):
-  - `app.financeiromaxfem.com.br` → admin
-  - `portal.financeiromaxfem.com.br` → fornecedores
-  - `api.financeiromaxfem.com.br` → webhooks
+- [x] Conta Cloudflare criada e domínio adicionado
+- [ ] **DNSSEC** ativado
+- [ ] **CAA records** (apenas `letsencrypt.org` e `pki.goog`)
+- [ ] **DMARC + SPF + DKIM** (após Resend configurar)
+- [ ] **WAF + Bot Fight Mode** ativos
+- [ ] Subdomínios criados (CNAME pra Vercel):
+  - [ ] `app.financeiromaxfem.com.br`
+  - [ ] `portal.financeiromaxfem.com.br`
+  - [ ] `api.financeiromaxfem.com.br`
+  - [ ] `staging.financeiromaxfem.com.br`
 
 ## 0.3 Supabase (3 projetos isolados)
 
-- [ ] Login em https://supabase.com com a conta Maxfem (Anderson)
-  - **Responsável:** Anderson (owner billing) + Thiago (admin operacional)
-- [ ] Criar **3 projetos Supabase Pro** ($25/mês cada = US$ 75/mês):
-  - `financeiro-maxfem-dev` — região `sa-east-1` (São Paulo)
-  - `financeiro-maxfem-staging` — região `sa-east-1`
-  - `financeiro-maxfem-prod` — região `sa-east-1`
-- [ ] Para cada projeto:
-  - Senha do Postgres forte (gerar via 1Password) — guardar no 1Password compartilhado
-  - Anotar `Project Ref` + `Anon Key` + `Service Role Key`
-  - Habilitar **PITR (Point-in-Time Recovery)** — 7 dias mínimo
-  - Network restrictions: deixar aberto por enquanto, vamos restringir IPs depois
-- [ ] No projeto prod: ativar **extensões** `uuid-ossp`, `pgcrypto`, `pgvector`, `pg_cron`
-- [ ] Provisionar Supabase Vault com slots vazios pra cada credencial (lista em [SECURITY.md §4.3](SECURITY.md))
+- [x] Conta Supabase
+- [~] **3 projetos Pro** em `sa-east-1`:
+  - [ ] `financeiro-maxfem-dev`
+  - [ ] `financeiro-maxfem-staging`
+  - [ ] `financeiro-maxfem-prod`
+- [ ] Senha Postgres forte gerada e salva no 1Password
+- [ ] Anotar `Project Ref` + `Anon Key` + `Service Role Key` de cada
+- [ ] PITR 7 dias ativado
+- [ ] Extensões ativadas: `uuid-ossp`, `pgcrypto`, `pgvector`, `pg_cron`
+- [ ] Supabase Vault com slots vazios pros segredos
 
 ## 0.4 Vercel (3 projetos isolados)
 
-- [ ] Criar/usar org Vercel **Team Plan** ($20/user × 3 = US$ 60/mês)
-  - **Responsável:** Anderson (owner billing)
-- [ ] Criar 3 projetos Vercel, todos linkados ao mesmo repo Git mas com branch diferente:
-  - `financeiro-maxfem-dev` → branch `dev`
-  - `financeiro-maxfem-staging` → branch `staging`
-  - `financeiro-maxfem-prod` → branch `main`
-- [ ] Para cada projeto:
-  - **Environment Variables**: criar slots vazios pras credenciais (marcar todas como `Sensitive`)
-  - **Preview Deployments**: desabilitar pra todas as branches que não sejam `dev`/`staging`
-  - **Deployment Protection**: ativar Vercel Authentication pros previews
-  - **Vercel Firewall**: ativar com OWASP Top 10
-  - **Bot Protection**: ativar nos endpoints sensíveis (`/api/*`)
-- [ ] Conectar domínios:
-  - prod: `app.financeiromaxfem.com.br` + `portal.financeiromaxfem.com.br` + `api.financeiromaxfem.com.br`
-  - staging: `staging.financeiromaxfem.com.br`
+- [x] Org Vercel Team
+- [~] 3 projetos:
+  - [ ] `financeiro-maxfem-dev` ← branch `dev`
+  - [ ] `financeiro-maxfem-staging` ← branch `staging`
+  - [ ] `financeiro-maxfem-prod` ← branch `main`
+- [ ] Env vars como `Sensitive`
+- [ ] Preview deployments restritos
+- [ ] Vercel Authentication nos previews
+- [ ] Vercel Firewall + Bot Protection
+- [ ] Domínios conectados
 
 ## 0.5 GitHub (repo privado)
 
-- [ ] Criar repo privado `Maxfem/financeiro-maxfem` na organização GitHub Maxfem
-  - **Responsável:** Thiago
-- [ ] Configurar **Branch protection** em `main`:
-  - 1 PR review obrigatório
-  - Status checks obrigatórios: `lint`, `typecheck`, `test`, `test:rls`, `gitleaks`
-  - Signed commits obrigatórios
-  - Linear history
-  - Não permitir force push
+- [x] Conta/org GitHub
+- [ ] Repo privado `financeiro-maxfem` criado
+- [ ] Branch protection em `main` (1 review + status checks obrigatórios + signed commits + linear history + sem force push)
 - [ ] Mesma proteção em `staging`
-- [ ] **CODEOWNERS** ativo (já criado em `.github/CODEOWNERS`)
-- [ ] Habilitar **Secret scanning** + **Push protection**
-- [ ] Habilitar **Dependabot** (alertas + PRs automáticos)
-- [ ] Conectar **Snyk free** ou **Socket.dev**
-- [ ] Push do repo local inicial (após Thiago revisar)
+- [x] CODEOWNERS (commitado no repo local — válido após push)
+- [ ] Secret scanning + Push protection
+- [ ] Dependabot
+- [ ] Snyk free ou Socket.dev conectado
+- [ ] **Push do repo local** (commit `d6f2e37`)
 
 ## 0.6 Resend (email transacional)
 
-- [ ] Criar conta Resend ($20/mês quando volume justificar; começa free)
-  - **Responsável:** Thiago
-- [ ] Adicionar domínio `financeiromaxfem.com.br`
-- [ ] Configurar **DKIM + SPF + return-path** nos DNS records do Cloudflare
-- [ ] Criar API key, salvar no Supabase Vault (`RESEND_API_KEY`)
-- [ ] Configurar email padrão: `financeiro@financeiromaxfem.com.br`
-- [ ] Teste de envio antes de qualquer dev
+- [x] Conta Resend
+- [ ] Domínio `financeiromaxfem.com.br` verificado
+- [ ] DKIM + SPF + return-path no Cloudflare
+- [ ] API key gerada e no Vault
+- [ ] Email padrão `financeiro@financeiromaxfem.com.br`
+- [ ] Teste de envio funcionando
 
 ## 0.7 Observabilidade
 
-- [ ] **Sentry**: criar projeto `financeiro-maxfem` (free → $26/mês quando volume justificar)
-  - DSN no Vault
-  - Source maps configurados via SENTRY_AUTH_TOKEN no Vercel
-- [ ] **Better Stack**: criar projeto pra uptime + logs
-  - Heartbeats configurados pros cron jobs do DDA keepalive
-- [ ] **Discord webhook** (ou Slack): criar canal `#financeiro-alertas`
-  - URL do webhook no Vault
+- [x] Conta Sentry
+- [ ] Projeto `financeiro-maxfem` criado no Sentry; DSN no Vault; source maps via `SENTRY_AUTH_TOKEN`
+- [ ] Better Stack (uptime + logs) — opcional, pode entrar no Sprint 7
+- [ ] Discord/Slack webhook `#financeiro-alertas`
 
-## 0.8 Autenticação (humanos)
+## 0.8 Autenticação humana
 
-- [ ] **2FA TOTP obrigatório** ativado nas contas de:
-  - Anderson — Supabase, Vercel, GitHub, Cloudflare, Resend
-  - Thiago — Supabase, Vercel, GitHub, Cloudflare, Resend
-  - **Backup codes** salvos no 1Password de cada um
-- [ ] Listar todas as 2FA configuradas num doc privado (pra emergência)
+- [ ] 2FA TOTP obrigatório em **todas** as contas (Supabase, Vercel, GitHub, Cloudflare, Resend, Sentry) — Anderson e Thiago
+- [ ] Backup codes salvos no 1Password de cada um
 
-## 0.9 YubiKey (hardware key — Anderson)
+## 0.9 YubiKey
 
-- [ ] Comprar **2× YubiKey 5 NFC** (1 principal + 1 backup) — ~R$ 500
-  - **Responsável:** Anderson
-- [ ] Enrolar no GitHub (FIDO2/WebAuthn)
-- [ ] Enrolar no Google account (se usar pra OAuth)
-- [ ] Enrolar no 1Password
-- [ ] Backup YubiKey guardada em cofre físico
+- [ ] Comprar 2× YubiKey 5 NFC (principal + backup pro Anderson)
+- [ ] Enrolar no GitHub, Google, 1Password
 
 ## 0.10 1Password compartilhado
 
-- [ ] Criar **vault dedicado** `Financeiro Maxfem` no 1Password Team
-- [ ] Compartilhar com Anderson + Thiago (e futuros membros do projeto, com revisão semestral)
-- [ ] Adicionar todos os secrets desta fase
+- [ ] Vault `Financeiro Maxfem` criado e compartilhado com Anderson + Thiago
 
 ---
 
-## Critério de saída da Fase 0
+## Status executivo
 
-Todas as caixas marcadas + os 3 documentos abaixo prontos:
+| Bloco | Status | O que falta |
+|---|---|---|
+| Contas externas criadas | ✅ | Configurações finas (DNSSEC, CAA, allowlists, env vars) |
+| Repo local com scaffold | ✅ | Push pro GitHub Maxfem |
+| 2FA + YubiKey | ❌ | Comprar YubiKey + enrolar em tudo |
+| Credenciais bancárias | ❌ | Inter API Banking + BTG Empresas (em espera) |
 
-- [ ] [Spec Sprint 0 (Spike Inter)](SPRINT-0-INTER-SPEC.md) — a criar
-- [ ] [Test suite RLS template](../tests/rls/) — esqueleto pronto pro Sprint 1
-- [ ] Política de Privacidade draft (vai pro escritório jurídico)
+---
 
-## Pré-requisitos externos (Fase 1, paralelo)
+## Estratégia: desenvolver Fase 4 sem Inter/BTG
 
-- [ ] **Inter PJ API Banking** ativa + escopos confirmados — Anderson liga pro gerente
-- [ ] **BTG Empresas** contas em cada CNPJ + DDA ativado — Anderson finaliza abertura
-- [ ] **Bling** OAuth2 app criado + API key V3 — Thiago
-- [ ] **Anthropic** API key (mesmo que IA só entre em V1) — Thiago
-- [ ] **Plano de contas** atualizado do contador — Thiago + contador
-- [ ] **Lista dos 18 fornecedores** ativos completa — equipe financeira
-- [ ] **Gestor Financeiro** definido (alçada Tática R$ 5k-30k) — Anderson
+**Decisão (2026-05-16):** vamos iniciar a Fase 4 (Sprints do MVP) em paralelo, enquanto Anderson destrava Inter e BTG.
+
+Lógica: usamos uma camada de abstração de pagamento (`PaymentProvider`) com um provider mock pra dev/staging. Quando Inter API Banking chegar, plugamos o provider real sem refatorar UI/regras de negócio.
+
+Ver detalhes em:
+- [docs/SPRINT-PLAN.md](SPRINT-PLAN.md) — sequência de sprints com dependências
+- [docs/PAYMENT-PROVIDER-CONTRACT.md](PAYMENT-PROVIDER-CONTRACT.md) — interface comum mock/Inter
+
+**Sprints que rodam SEM Inter/BTG:**
+- Sprint 1 — base, auth+2FA, RLS, seletor empresa, **test suite de RLS em CI**
+- Sprint 2 — cadastros (fornecedor, plano de contas, CC, contas bancárias)
+- Sprint 3 — Contas a Pagar core + alçadas (com provider mock pra simular pagamento)
+- Sprint 4 — Portal do Fornecedor (convite, magic link, upload XML, parser NF-e)
+- Sprint 7 (parcial) — Bling leitura (estoque, produtos)
+
+**Sprints que aguardam credenciais:**
+- Sprint 0 (Spike Inter) — quando Inter API Banking ativada
+- Sprint 5 (integração Inter real) — depende Sprint 0
+- Sprint 6 (DDA BTG) — quando BTG Empresas + DDA ativados
+- Sprint 7 (parcial) — conciliação bancária precisa do extrato Inter
+
+## Pré-requisitos externos em espera
+
+- [ ] **Inter PJ API Banking** ativa + escopos confirmados (`pagamento-pix.write`, `pagamento-boleto.write`, `extrato.read`, `webhook.write`) + certificado mTLS — **Anderson liga pro gerente Inter**
+- [ ] **BTG Empresas** contas abertas em cada CNPJ + DDA ativado + credenciais OAuth2 BTG Id — **Anderson finaliza abertura**
+- [ ] **Bling** OAuth2 app criado + API key V3 — **Thiago (pode fazer agora)**
+- [ ] **Anthropic** API key (mesmo que IA só entre em V1) — **Thiago (pode fazer agora)**
+- [ ] **Plano de contas** atualizado do contador — **Thiago + contador**
+- [ ] **Lista dos 18 fornecedores** ativos completa — **equipe financeira**
+- [ ] **Gestor Financeiro** definido (alçada Tática R$ 5k-30k) — **Anderson**
 
 ---
 
@@ -152,10 +150,10 @@ Todas as caixas marcadas + os 3 documentos abaixo prontos:
 | Cloudflare Pro | US$ 20 |
 | Resend (começa free) | US$ 0 |
 | Sentry (começa free) | US$ 0 |
-| Better Stack (começa free) | US$ 0 |
-| **Total mensal** | **~US$ 155** (escala pra US$ 260 quando ativar planos pagos de Sentry/Better Stack/Resend) |
+| **Total mensal inicial** | **~US$ 155** |
 
 Custos pontuais Fase 0:
+
 | Item | Custo |
 |---|---|
 | Domínio `financeiromaxfem.com.br` (1 ano) | R$ 40 |
@@ -163,4 +161,4 @@ Custos pontuais Fase 0:
 
 ---
 
-**Quando todas as caixas estiverem marcadas, libera Sprint 0 (Spike Inter).**
+**Próximo passo concreto:** começar Sprint 1 (ver [SPRINT-PLAN.md](SPRINT-PLAN.md)).
