@@ -674,6 +674,30 @@ export type Database = {
       hash_invitation_code: { Args: { p_code: string }; Returns: string }
       show_limit: { Args: never; Returns: number }
       show_trgm: { Args: { "": string }; Returns: string[] }
+      update_supplier_bank_details: {
+        Args: {
+          p_account_digit?: string
+          p_account_holder_doc?: string
+          p_account_holder_name?: string
+          p_account_number?: string
+          p_agency?: string
+          p_bank_code?: string
+          p_changed_by_role: string
+          p_encryption_key: string
+          p_ip_address?: unknown
+          p_pix_key?: string
+          p_pix_key_type?: string
+          p_reason: string
+          p_supplier_id: string
+          p_user_agent?: string
+        }
+        Returns: {
+          change_log_id: string
+          changed_to_new_account: boolean
+          effective_at: string
+          new_bank_details_id: string
+        }[]
+      }
       user_has_org_access: { Args: { p_org_id: string }; Returns: boolean }
       user_has_org_access_recursive: {
         Args: { p_org_id: string }

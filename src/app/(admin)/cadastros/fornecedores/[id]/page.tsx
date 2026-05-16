@@ -131,22 +131,26 @@ export default async function FornecedorDetailPage({
         />
       </section>
 
-      {/* Dados bancários (read-only nesta sprint; flow de update em seguida) */}
+      {/* Dados bancários */}
       <section className="bg-white border border-neutral-200 rounded-lg p-5">
-        <header className="flex items-center justify-between mb-3">
+        <header className="flex items-center justify-between mb-3 gap-3">
           <div>
             <h2 className="text-sm font-semibold text-maxfem-ink">Dados bancários</h2>
             <p className="text-xs text-neutral-500 mt-0.5">
-              Dados criptografados em repouso (pgcrypto). Hash determinístico permite detectar
-              duplicidades sem decriptar.
+              Criptografados em repouso (pgcrypto). Mudança tem cooldown 24h + WORM log.
             </p>
           </div>
+          <Link
+            href={`/cadastros/fornecedores/${supplier.id}/dados-bancarios/editar`}
+            className="btn-secondary text-xs shrink-0"
+          >
+            {bankDetails ? 'Atualizar dados' : 'Cadastrar dados'}
+          </Link>
         </header>
 
         {!bankDetails ? (
           <p className="text-sm text-neutral-500 italic">
-            Nenhum dado bancário cadastrado ainda. {' '}
-            <span className="text-neutral-400">(Update flow com cooldown 24h vem no próximo deploy.)</span>
+            Nenhum dado bancário cadastrado ainda.
           </p>
         ) : (
           <>
