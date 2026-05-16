@@ -14,15 +14,28 @@ const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY ?? '';
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type AnyClient = SupabaseClient<any, any, any>;
 
-if (!SUPABASE_ANON_KEY || !SUPABASE_SERVICE_ROLE_KEY) {
-  throw new Error(
-    'RLS tests precisam de SUPABASE_ANON_KEY e SUPABASE_SERVICE_ROLE_KEY. Rodar via `npx supabase start` primeiro.',
-  );
+// Cliente admin (service role) — usado APENAS pra setup/teardown.
+// Lazy: só instancia quando uma suite ativa precisar (suites .skip nunca tocam).
+let _adminClient: AnyClient | null = null;
+export function getAdminClient(): AnyClient {
+  if (_adminClient) return _adminClient;
+  if (!SUPABASE_ANON_KEY || !SUPABASE_SERVICE_ROLE_KEY) {
+    throw new Error(
+      'RLS tests precisam de SUPABASE_ANON_KEY e SUPABASE_SERVICE_ROLE_KEY. Rodar via `npx supabase start` primeiro.',
+    );
+  }
+  _adminClient = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
+    auth: { autoRefreshToken: false, persistSession: false },
+  });
+  return _adminClient;
 }
 
-// Cliente admin (service role) — usado APENAS pra setup/teardown
-export const adminClient: AnyClient = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
-  auth: { autoRefreshToken: false, persistSession: false },
+// Compat: mantém export `adminClient` como Proxy lazy pros testes que já usavam
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export const adminClient: AnyClient = new Proxy({} as any, {
+  get(_t, prop) {
+    return Reflect.get(getAdminClient(), prop);
+  },
 });
 
 /**

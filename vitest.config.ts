@@ -12,6 +12,8 @@ export default defineConfig({
     globals: false,
     environment: 'node',
     include: ['src/**/*.test.{ts,tsx}', 'tests/**/*.test.ts'],
+    // Permite suites vazias (estamos em Sprint 1 — testes reais virão em Sprint 2+)
+    passWithNoTests: true,
     // RLS suite roda em serial pra evitar race em fixtures compartilhadas
     fileParallelism: false,
     testTimeout: 30000,
