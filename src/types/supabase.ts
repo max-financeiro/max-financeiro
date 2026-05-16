@@ -93,6 +93,258 @@ export type Database = {
   }
   public: {
     Tables: {
+      bank_accounts: {
+        Row: {
+          account_digit: string | null
+          account_number: string
+          account_type: string
+          agency: string
+          api_credentials_secret_id: string | null
+          bank_code: string
+          bank_name: string
+          created_at: string
+          deleted_at: string | null
+          display_name: string | null
+          id: string
+          is_active: boolean
+          notes: string | null
+          organization_id: string
+          purpose: string
+          updated_at: string
+        }
+        Insert: {
+          account_digit?: string | null
+          account_number: string
+          account_type: string
+          agency: string
+          api_credentials_secret_id?: string | null
+          bank_code: string
+          bank_name: string
+          created_at?: string
+          deleted_at?: string | null
+          display_name?: string | null
+          id?: string
+          is_active?: boolean
+          notes?: string | null
+          organization_id: string
+          purpose: string
+          updated_at?: string
+        }
+        Update: {
+          account_digit?: string | null
+          account_number?: string
+          account_type?: string
+          agency?: string
+          api_credentials_secret_id?: string | null
+          bank_code?: string
+          bank_name?: string
+          created_at?: string
+          deleted_at?: string | null
+          display_name?: string | null
+          id?: string
+          is_active?: boolean
+          notes?: string | null
+          organization_id?: string
+          purpose?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "bank_accounts_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      business_partners: {
+        Row: {
+          address: Json | null
+          created_at: string
+          created_by: string | null
+          default_payment_terms: number | null
+          deleted_at: string | null
+          document: string
+          document_type: string
+          email: string | null
+          group_id: string
+          id: string
+          legal_name: string
+          notes: string | null
+          partner_type: string
+          phone: string | null
+          receita_data: Json | null
+          receita_synced_at: string | null
+          status: string
+          supplier_user_id: string | null
+          trade_name: string | null
+          updated_at: string
+          uses_supplier_portal: boolean
+        }
+        Insert: {
+          address?: Json | null
+          created_at?: string
+          created_by?: string | null
+          default_payment_terms?: number | null
+          deleted_at?: string | null
+          document: string
+          document_type: string
+          email?: string | null
+          group_id: string
+          id?: string
+          legal_name: string
+          notes?: string | null
+          partner_type: string
+          phone?: string | null
+          receita_data?: Json | null
+          receita_synced_at?: string | null
+          status?: string
+          supplier_user_id?: string | null
+          trade_name?: string | null
+          updated_at?: string
+          uses_supplier_portal?: boolean
+        }
+        Update: {
+          address?: Json | null
+          created_at?: string
+          created_by?: string | null
+          default_payment_terms?: number | null
+          deleted_at?: string | null
+          document?: string
+          document_type?: string
+          email?: string | null
+          group_id?: string
+          id?: string
+          legal_name?: string
+          notes?: string | null
+          partner_type?: string
+          phone?: string | null
+          receita_data?: Json | null
+          receita_synced_at?: string | null
+          status?: string
+          supplier_user_id?: string | null
+          trade_name?: string | null
+          updated_at?: string
+          uses_supplier_portal?: boolean
+        }
+        Relationships: [
+          {
+            foreignKeyName: "business_partners_group_id_fkey"
+            columns: ["group_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      chart_of_accounts: {
+        Row: {
+          account_type: string
+          active: boolean
+          code: string
+          created_at: string
+          deleted_at: string | null
+          group_id: string
+          id: string
+          is_analytical: boolean
+          level: number
+          name: string
+          notes: string | null
+          parent_account_id: string | null
+          updated_at: string
+        }
+        Insert: {
+          account_type: string
+          active?: boolean
+          code: string
+          created_at?: string
+          deleted_at?: string | null
+          group_id: string
+          id?: string
+          is_analytical?: boolean
+          level: number
+          name: string
+          notes?: string | null
+          parent_account_id?: string | null
+          updated_at?: string
+        }
+        Update: {
+          account_type?: string
+          active?: boolean
+          code?: string
+          created_at?: string
+          deleted_at?: string | null
+          group_id?: string
+          id?: string
+          is_analytical?: boolean
+          level?: number
+          name?: string
+          notes?: string | null
+          parent_account_id?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "chart_of_accounts_group_id_fkey"
+            columns: ["group_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "chart_of_accounts_parent_account_id_fkey"
+            columns: ["parent_account_id"]
+            isOneToOne: false
+            referencedRelation: "chart_of_accounts"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      cost_centers: {
+        Row: {
+          active: boolean
+          code: string
+          created_at: string
+          deleted_at: string | null
+          description: string | null
+          group_id: string
+          id: string
+          name: string
+          updated_at: string
+        }
+        Insert: {
+          active?: boolean
+          code: string
+          created_at?: string
+          deleted_at?: string | null
+          description?: string | null
+          group_id: string
+          id?: string
+          name: string
+          updated_at?: string
+        }
+        Update: {
+          active?: boolean
+          code?: string
+          created_at?: string
+          deleted_at?: string | null
+          description?: string | null
+          group_id?: string
+          id?: string
+          name?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "cost_centers_group_id_fkey"
+            columns: ["group_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       organizations: {
         Row: {
           address: Json | null
@@ -142,6 +394,204 @@ export type Database = {
             columns: ["parent_id"]
             isOneToOne: false
             referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      supplier_bank_change_log: {
+        Row: {
+          change_type: string
+          changed_by: string | null
+          changed_by_role: string
+          changed_to_new_account: boolean | null
+          effective_at: string
+          id: string
+          ip_address: unknown
+          new_account_hash: string | null
+          new_data_encrypted: string | null
+          new_pix_hash: string | null
+          occurred_at: string
+          old_account_hash: string | null
+          old_data_encrypted: string | null
+          old_pix_hash: string | null
+          reason: string | null
+          session_id: string | null
+          supplier_id: string
+          user_agent: string | null
+        }
+        Insert: {
+          change_type: string
+          changed_by?: string | null
+          changed_by_role: string
+          changed_to_new_account?: boolean | null
+          effective_at?: string
+          id?: string
+          ip_address?: unknown
+          new_account_hash?: string | null
+          new_data_encrypted?: string | null
+          new_pix_hash?: string | null
+          occurred_at?: string
+          old_account_hash?: string | null
+          old_data_encrypted?: string | null
+          old_pix_hash?: string | null
+          reason?: string | null
+          session_id?: string | null
+          supplier_id: string
+          user_agent?: string | null
+        }
+        Update: {
+          change_type?: string
+          changed_by?: string | null
+          changed_by_role?: string
+          changed_to_new_account?: boolean | null
+          effective_at?: string
+          id?: string
+          ip_address?: unknown
+          new_account_hash?: string | null
+          new_data_encrypted?: string | null
+          new_pix_hash?: string | null
+          occurred_at?: string
+          old_account_hash?: string | null
+          old_data_encrypted?: string | null
+          old_pix_hash?: string | null
+          reason?: string | null
+          session_id?: string | null
+          supplier_id?: string
+          user_agent?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "supplier_bank_change_log_supplier_id_fkey"
+            columns: ["supplier_id"]
+            isOneToOne: false
+            referencedRelation: "business_partners"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      supplier_bank_details: {
+        Row: {
+          account_digit_encrypted: string | null
+          account_hash: string | null
+          account_holder_doc: string | null
+          account_holder_name: string | null
+          account_number_encrypted: string | null
+          agency: string | null
+          bank_code: string | null
+          created_at: string
+          deleted_at: string | null
+          id: string
+          is_active: boolean
+          pix_key_encrypted: string | null
+          pix_key_hash: string | null
+          pix_key_type: string | null
+          supplier_id: string
+          updated_at: string
+          verified_at: string | null
+          verified_by: string | null
+        }
+        Insert: {
+          account_digit_encrypted?: string | null
+          account_hash?: string | null
+          account_holder_doc?: string | null
+          account_holder_name?: string | null
+          account_number_encrypted?: string | null
+          agency?: string | null
+          bank_code?: string | null
+          created_at?: string
+          deleted_at?: string | null
+          id?: string
+          is_active?: boolean
+          pix_key_encrypted?: string | null
+          pix_key_hash?: string | null
+          pix_key_type?: string | null
+          supplier_id: string
+          updated_at?: string
+          verified_at?: string | null
+          verified_by?: string | null
+        }
+        Update: {
+          account_digit_encrypted?: string | null
+          account_hash?: string | null
+          account_holder_doc?: string | null
+          account_holder_name?: string | null
+          account_number_encrypted?: string | null
+          agency?: string | null
+          bank_code?: string | null
+          created_at?: string
+          deleted_at?: string | null
+          id?: string
+          is_active?: boolean
+          pix_key_encrypted?: string | null
+          pix_key_hash?: string | null
+          pix_key_type?: string | null
+          supplier_id?: string
+          updated_at?: string
+          verified_at?: string | null
+          verified_by?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "supplier_bank_details_supplier_id_fkey"
+            columns: ["supplier_id"]
+            isOneToOne: false
+            referencedRelation: "business_partners"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      supplier_invitations: {
+        Row: {
+          attempt_count: number
+          created_at: string
+          created_by: string | null
+          email: string
+          expires_at: string
+          id: string
+          invitation_code_hash: string
+          locked_until: string | null
+          resulting_user_id: string | null
+          supplier_id: string
+          used_at: string | null
+          used_ip: unknown
+          used_user_agent: string | null
+        }
+        Insert: {
+          attempt_count?: number
+          created_at?: string
+          created_by?: string | null
+          email: string
+          expires_at: string
+          id?: string
+          invitation_code_hash: string
+          locked_until?: string | null
+          resulting_user_id?: string | null
+          supplier_id: string
+          used_at?: string | null
+          used_ip?: unknown
+          used_user_agent?: string | null
+        }
+        Update: {
+          attempt_count?: number
+          created_at?: string
+          created_by?: string | null
+          email?: string
+          expires_at?: string
+          id?: string
+          invitation_code_hash?: string
+          locked_until?: string | null
+          resulting_user_id?: string | null
+          supplier_id?: string
+          used_at?: string | null
+          used_ip?: unknown
+          used_user_agent?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "supplier_invitations_supplier_id_fkey"
+            columns: ["supplier_id"]
+            isOneToOne: false
+            referencedRelation: "business_partners"
             referencedColumns: ["id"]
           },
         ]
@@ -217,6 +667,11 @@ export type Database = {
     }
     Functions: {
       current_user_role: { Args: never; Returns: string }
+      decrypt_bank_field: { Args: { p_ciphertext: string }; Returns: string }
+      encrypt_bank_field: { Args: { p_plaintext: string }; Returns: string }
+      generate_invitation_code: { Args: never; Returns: string }
+      hash_bank_field: { Args: { p_plaintext: string }; Returns: string }
+      hash_invitation_code: { Args: { p_code: string }; Returns: string }
       show_limit: { Args: never; Returns: number }
       show_trgm: { Args: { "": string }; Returns: string[] }
       user_has_org_access: { Args: { p_org_id: string }; Returns: boolean }
@@ -225,6 +680,10 @@ export type Database = {
         Returns: boolean
       }
       user_has_role: { Args: { p_roles: string[] }; Returns: boolean }
+      verify_invitation_code: {
+        Args: { p_code: string; p_hash: string }
+        Returns: boolean
+      }
     }
     Enums: {
       [_ in never]: never
