@@ -1,0 +1,39 @@
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+      time: '08:00'
+      timezone: America/Sao_Paulo
+    open-pull-requests-limit: 10
+    reviewers:
+      - thiagobraga
+    labels:
+      - dependencies
+      - security
+    groups:
+      # Updates de patch/minor de produção viram um único PR
+      production-minor:
+        dependency-type: production
+        update-types:
+          - minor
+          - patch
+      # Major updates viram PRs individuais (precisam review)
+      production-major:
+        dependency-type: production
+        update-types:
+          - major
+      development:
+        dependency-type: development
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    reviewers:
+      - thiagobraga
+    labels:
+      - dependencies
+      - github-actions

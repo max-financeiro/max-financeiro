@@ -1,0 +1,72 @@
+# Dependencies
+node_modules/
+.pnp
+.pnp.js
+
+# Testing
+coverage/
+.nyc_output/
+
+# Next.js
+.next/
+out/
+build/
+dist/
+
+# Production
+*.tsbuildinfo
+
+# Environment - NEVER commit any .env (use Supabase Vault for secrets)
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+.env.*.local
+.env.production
+.env.staging
+.env.development
+
+# Vercel
+.vercel/
+
+# IDE
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.shared.json
+.idea/
+*.swp
+*.swo
+.DS_Store
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+.pnpm-debug.log*
+
+# Supabase local
+supabase/.branches
+supabase/.temp
+supabase/.env
+supabase/seed-local.sql
+
+# Certificates - NEVER commit (use Supabase Vault)
+*.pem
+*.key
+*.crt
+*.cer
+*.p12
+*.pfx
+*.jks
+
+# Sentry
+.sentryclirc
+
+# Secrets
+secrets/
+credentials/
+*-credentials.json
+service-account*.json

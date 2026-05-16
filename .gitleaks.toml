@@ -1,0 +1,32 @@
+# Gitleaks config — Sistema Financeiro Maxfem
+# https://github.com/gitleaks/gitleaks
+
+title = "Financeiro Maxfem gitleaks config"
+
+[extend]
+useDefault = true
+
+# Rules adicionais customizadas
+[[rules]]
+id = "supabase-service-role-key"
+description = "Supabase service role JWT (sb_...)"
+regex = '''(eyJ[a-zA-Z0-9_=]+\.eyJ[a-zA-Z0-9_=]+\.[a-zA-Z0-9_\-\+\/=]+)'''
+keywords = ["supabase", "service_role"]
+
+[[rules]]
+id = "inter-mtls-private-key"
+description = "Inter mTLS private key"
+regex = '''-----BEGIN (RSA |EC )?PRIVATE KEY-----'''
+
+[[rules]]
+id = "btg-client-secret"
+description = "BTG client secret pattern"
+regex = '''btg[_\-]?client[_\-]?secret\s*[:=]\s*['""]?([a-zA-Z0-9_\-]{32,})'''
+
+[allowlist]
+description = "Allowlist global"
+paths = [
+  ".env.example",
+  "docs/",
+  "tests/fixtures/",
+]

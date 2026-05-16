@@ -1,0 +1,27 @@
+# Code Owners — Sistema Financeiro Maxfem
+# https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/customizing-your-repository/about-code-owners
+#
+# Toda mudança nestes paths exige aprovação dos owners listados.
+# Manter rigoroso em: pagamentos, RLS, auth, integrações bancárias.
+
+# Default — qualquer arquivo precisa de Thiago
+*                                       @thiagobraga
+
+# === Áreas críticas — exige Anderson + Thiago ===
+/supabase/migrations/                   @thiagobraga @andersonmesquita
+/supabase/functions/                    @thiagobraga @andersonmesquita
+/src/lib/payments/                      @thiagobraga @andersonmesquita
+/src/lib/inter/                         @thiagobraga @andersonmesquita
+/src/lib/btg/                           @thiagobraga @andersonmesquita
+/src/lib/auth/                          @thiagobraga @andersonmesquita
+/src/middleware.ts                      @thiagobraga @andersonmesquita
+
+# === Segurança e CI ===
+/.github/                               @thiagobraga @andersonmesquita
+/next.config.ts                         @thiagobraga @andersonmesquita
+/tests/rls/                             @thiagobraga @andersonmesquita
+
+# === Documentação arquitetural ===
+/docs/SECURITY.md                       @thiagobraga @andersonmesquita
+/docs/ARCHITECTURE.md                   @thiagobraga @andersonmesquita
+/docs/PRD.md                            @thiagobraga @andersonmesquita
