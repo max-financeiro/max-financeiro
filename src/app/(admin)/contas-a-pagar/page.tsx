@@ -1,4 +1,5 @@
 import type { Metadata } from 'next';
+import Link from 'next/link';
 import { createClient } from '@/lib/supabase/server';
 import { formatBRL, formatDate } from '@/lib/format';
 
@@ -49,10 +50,12 @@ export default async function ContasAPagarPage() {
             Contas a pagar
           </h1>
           <p className="text-sm text-neutral-600 mt-1">
-            Sprint 3 em construção. Schema completo aplicado (CAP + aprovações + pagamentos + alçadas).
-            Listagem read-only enquanto UI de lançamento e aprovação não chega.
+            Alçada calculada por valor + 7 overrides anti-fraude (RPC calc_required_approval_level).
           </p>
         </div>
+        <Link href="/contas-a-pagar/nova" className="btn-primary">
+          + Nova CAP
+        </Link>
       </header>
 
       {error && (
@@ -134,10 +137,9 @@ export default async function ContasAPagarPage() {
       <div className="bg-amber-50 border border-amber-200 rounded-lg p-4 text-sm text-amber-900">
         <strong>Próxima rodada:</strong>
         <ul className="list-disc list-inside mt-2 space-y-0.5 text-amber-800">
-          <li>Payment Provider abstraction (mock + Inter futuro)</li>
-          <li>Página &ldquo;Nova CAP&rdquo; com cálculo de alçada via RPC</li>
-          <li>Detalhe da CAP com workflow approve/reject</li>
+          <li>Detalhe da CAP com workflow approve/reject por role</li>
           <li>Integração com cooldown bancário (verifica effective_at antes de pagar)</li>
+          <li>Solicitar pagamento via MockPaymentProvider (criado nesta rodada)</li>
         </ul>
       </div>
     </div>
