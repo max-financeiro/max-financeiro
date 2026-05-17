@@ -182,7 +182,9 @@ export async function inviteSupplierAction(
     magicLink = null;
   }
 
-  revalidatePath(`/cadastros/fornecedores/${parsed.data.supplier_id}`);
+  // NÃO revalidar aqui — revalidatePath força re-render e troca o CodeCard
+  // (que mostra código+link) pelo PendingCard. O CodeCard mostra-se via
+  // useActionState; quando user navegar ou recarregar, vê o PendingCard.
   return { ok: true, code: row.code, expiresAt: row.expires_at, magicLink };
 }
 
