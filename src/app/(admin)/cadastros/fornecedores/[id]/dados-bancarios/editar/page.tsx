@@ -43,7 +43,11 @@ export default async function EditarDadosBancariosPage({
         </h1>
       </header>
 
-      <DadosBancariosForm supplierId={supplier.id} supplierName={supplier.legal_name} />
+      <DadosBancariosForm
+        supplierId={supplier.id}
+        supplierName={supplier.legal_name}
+        buildSha={process.env.VERCEL_GIT_COMMIT_SHA?.slice(0, 7)}
+      />
     </div>
   );
 }

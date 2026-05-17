@@ -1,44 +1,52 @@
 'use client';
 
-import { useActionState, useState, useEffect } from 'react';
+import { useActionState, useState, useEffect, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
 import { updateBankDetailsAction, type UpdateBankState } from './actions';
 
 type Props = {
   supplierId: string;
   supplierName: string;
+  buildSha?: string;
 };
 
-export function DadosBancariosForm({ supplierId, supplierName }: Props) {
+// Versão da UI — incrementar a cada deploy crítico pra usuário poder verificar
+const UI_VERSION = 'v2-controlled-2026-05-17';
+
+export function DadosBancariosForm({ supplierId, supplierName, buildSha }: Props) {
   const router = useRouter();
-  const [state, formAction, submitting] = useActionState<UpdateBankState, FormData>(
+  const [state, formAction] = useActionState<UpdateBankState, FormData>(
     updateBankDetailsAction,
     null,
   );
+  const [submitting, startTransition] = useTransition();
+
+  // ============================================================
+  // TUDO controlled. Nenhum defaultValue. Estado é a verdade.
+  // ============================================================
   const [method, setMethod] = useState<'pix' | 'ted' | 'both'>('pix');
-  // Controlled state pra campos que não respeitam defaultValue/defaultChecked
-  // entre re-renders (select e checkbox). Sincronizado com state.values na
-  // primeira vez que o action retorna erro (useEffect abaixo).
   const [pixKeyType, setPixKeyType] = useState('');
+  const [pixKey, setPixKey] = useState('');
+  const [bankCode, setBankCode] = useState('');
+  const [agency, setAgency] = useState('');
+  const [accountNumber, setAccountNumber] = useState('');
+  const [accountDigit, setAccountDigit] = useState('');
+  const [holderName, setHolderName] = useState(supplierName);
+  const [holderDoc, setHolderDoc] = useState('');
+  const [reason, setReason] = useState('');
   const [confirmChecked, setConfirmChecked] = useState(false);
 
-  // Preserva valores digitados quando ação retorna erro (state.values)
-  const v = state && !state.ok && state.values ? state.values : {};
   const isError = state && state.ok === false;
   const isSuccess = state && state.ok === true;
   const fieldErrors = state && state.ok === false ? state.fieldErrors : undefined;
 
-  // Sincroniza estado controlado com values retornados pelo action quando há erro.
-  // (Inputs text/textarea são uncontrolled e usam defaultValue=values.* direto.)
+  // Log estado em cada render pra debug visual no DevTools console
   useEffect(() => {
-    if (state && !state.ok && state.values) {
-      if (state.values.pix_key_type !== undefined) setPixKeyType(state.values.pix_key_type);
-      // confirm não vem em values (checkbox não envia FormData se desmarcado)
-    }
+    // eslint-disable-next-line no-console
+    console.warn('[bank-form]', UI_VERSION, 'state:', state);
   }, [state]);
 
-  // Navega após sucesso (substitui o redirect do server action — evita
-  // problema de reset do form sem feedback visual)
+  // Navega após sucesso
   useEffect(() => {
     if (!isSuccess || !state || state.ok !== true) return;
     const t = setTimeout(() => {
@@ -47,17 +55,30 @@ export function DadosBancariosForm({ supplierId, supplierName }: Props) {
     return () => clearTimeout(t);
   }, [isSuccess, state, router]);
 
+  // Wrapper do submit que loga e dispara o action via FormData
+  function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    const form = e.currentTarget;
+    const fd = new FormData(form);
+    // eslint-disable-next-line no-console
+    console.warn('[bank-form] submitting', Object.fromEntries(fd.entries()));
+    startTransition(() => {
+      formAction(fd);
+    });
+  }
+
   return (
-    <form action={formAction} className="space-y-5">
+    <form onSubmit={handleSubmit} className="space-y-5">
       <input type="hidden" name="supplier_id" value={supplierId} />
+
+      {/* Indicador de versão */}
+      <div className="text-xs text-neutral-400 font-mono">
+        UI: {UI_VERSION}{buildSha ? ` · build: ${buildSha}` : ''}
+      </div>
 
       {/* Banner de sucesso */}
       {isSuccess && (
-        <div
-          className="bg-emerald-50 border-2 border-emerald-300 rounded-lg p-4"
-          role="status"
-          aria-live="polite"
-        >
+        <div className="bg-emerald-50 border-2 border-emerald-300 rounded-lg p-4" role="status">
           <p className="text-sm font-semibold text-emerald-900">✓ Dados bancários salvos</p>
           <p className="text-sm text-emerald-800 mt-1">
             Cooldown de 24h ativo. Redirecionando pro detalhe do fornecedor...
@@ -65,15 +86,25 @@ export function DadosBancariosForm({ supplierId, supplierName }: Props) {
         </div>
       )}
 
-      {/* Banner de erro global (não-campo) */}
+      {/* Banner de erro global */}
       {isError && !fieldErrors && (
-        <div
-          className="bg-rose-50 border-2 border-rose-300 rounded-lg p-4"
-          role="alert"
-          aria-live="assertive"
-        >
+        <div className="bg-rose-50 border-2 border-rose-300 rounded-lg p-4" role="alert">
           <p className="text-sm font-semibold text-rose-900">Não foi possível salvar</p>
           <p className="text-sm text-rose-800 mt-1">{state.error}</p>
+        </div>
+      )}
+
+      {/* Banner de erro com fieldErrors visíveis */}
+      {isError && fieldErrors && Object.keys(fieldErrors).length > 0 && (
+        <div className="bg-rose-50 border-2 border-rose-300 rounded-lg p-4" role="alert">
+          <p className="text-sm font-semibold text-rose-900">Corrija os campos abaixo:</p>
+          <ul className="text-sm text-rose-800 mt-1 list-disc list-inside">
+            {Object.entries(fieldErrors).map(([k, msg]) => (
+              <li key={k}>
+                <strong>{k}:</strong> {msg}
+              </li>
+            ))}
+          </ul>
         </div>
       )}
 
@@ -82,10 +113,6 @@ export function DadosBancariosForm({ supplierId, supplierName }: Props) {
         <p className="text-sm font-semibold text-amber-900">⚠ Cooldown de 24 horas</p>
         <p className="text-sm text-amber-800 mt-1">
           Esta mudança só será efetiva pra pagamentos <strong>24h após confirmar</strong>.
-          Defesa anti-fraude: caso a credencial do fornecedor tenha sido comprometida,
-          há janela pra detectar e reverter.
-        </p>
-        <p className="text-sm text-amber-800 mt-1">
           Histórico fica registrado imutavelmente (WORM log).
         </p>
       </div>
@@ -146,7 +173,8 @@ export function DadosBancariosForm({ supplierId, supplierName }: Props) {
                 type="text"
                 className="input-field font-mono"
                 placeholder="A chave PIX"
-                defaultValue={v.pix_key ?? ''}
+                value={pixKey}
+                onChange={(e) => setPixKey(e.target.value)}
               />
               {fieldErrors?.pix_key && <p className="form-error">{fieldErrors.pix_key}</p>}
             </div>
@@ -160,59 +188,35 @@ export function DadosBancariosForm({ supplierId, supplierName }: Props) {
           <h2 className="text-sm font-semibold text-maxfem-ink">Conta bancária (TED/Boleto)</h2>
           <div className="grid sm:grid-cols-2 gap-4">
             <div>
-              <label htmlFor="bank_code" className="form-label">
-                Código do banco
-              </label>
+              <label htmlFor="bank_code" className="form-label">Código do banco</label>
               <input
-                id="bank_code"
-                name="bank_code"
-                type="text"
-                className="input-field font-mono"
-                placeholder="077"
-                defaultValue={v.bank_code ?? ''}
+                id="bank_code" name="bank_code" type="text"
+                className="input-field font-mono" placeholder="077"
+                value={bankCode} onChange={(e) => setBankCode(e.target.value)}
               />
             </div>
             <div>
-              <label htmlFor="agency" className="form-label">
-                Agência
-              </label>
+              <label htmlFor="agency" className="form-label">Agência</label>
               <input
-                id="agency"
-                name="agency"
-                type="text"
-                inputMode="numeric"
-                className="input-field font-mono"
-                placeholder="0001"
-                defaultValue={v.agency ?? ''}
+                id="agency" name="agency" type="text" inputMode="numeric"
+                className="input-field font-mono" placeholder="0001"
+                value={agency} onChange={(e) => setAgency(e.target.value)}
               />
             </div>
             <div>
-              <label htmlFor="account_number" className="form-label">
-                Conta
-              </label>
+              <label htmlFor="account_number" className="form-label">Conta</label>
               <input
-                id="account_number"
-                name="account_number"
-                type="text"
-                inputMode="numeric"
-                className="input-field font-mono"
-                placeholder="1234567"
-                defaultValue={v.account_number ?? ''}
+                id="account_number" name="account_number" type="text" inputMode="numeric"
+                className="input-field font-mono" placeholder="1234567"
+                value={accountNumber} onChange={(e) => setAccountNumber(e.target.value)}
               />
             </div>
             <div>
-              <label htmlFor="account_digit" className="form-label">
-                Dígito
-              </label>
+              <label htmlFor="account_digit" className="form-label">Dígito</label>
               <input
-                id="account_digit"
-                name="account_digit"
-                type="text"
-                inputMode="numeric"
-                maxLength={2}
-                className="input-field font-mono"
-                placeholder="0"
-                defaultValue={v.account_digit ?? ''}
+                id="account_digit" name="account_digit" type="text" inputMode="numeric" maxLength={2}
+                className="input-field font-mono" placeholder="0"
+                value={accountDigit} onChange={(e) => setAccountDigit(e.target.value)}
               />
             </div>
           </div>
@@ -223,32 +227,23 @@ export function DadosBancariosForm({ supplierId, supplierName }: Props) {
       <section className="bg-white border border-neutral-200 rounded-lg p-5 space-y-4">
         <h2 className="text-sm font-semibold text-maxfem-ink">Titular da conta</h2>
         <p className="text-xs text-neutral-500">
-          Esses dados são checados pelo Inter antes do PIX/TED — preencha exatamente como cadastrado no banco.
+          Esses dados são checados pelo Inter antes do PIX/TED.
         </p>
         <div className="grid sm:grid-cols-2 gap-4">
           <div>
-            <label htmlFor="account_holder_name" className="form-label">
-              Nome do titular
-            </label>
+            <label htmlFor="account_holder_name" className="form-label">Nome do titular</label>
             <input
-              id="account_holder_name"
-              name="account_holder_name"
-              type="text"
+              id="account_holder_name" name="account_holder_name" type="text"
               className="input-field"
-              defaultValue={v.account_holder_name ?? supplierName}
+              value={holderName} onChange={(e) => setHolderName(e.target.value)}
             />
           </div>
           <div>
-            <label htmlFor="account_holder_doc" className="form-label">
-              CPF/CNPJ do titular
-            </label>
+            <label htmlFor="account_holder_doc" className="form-label">CPF/CNPJ do titular</label>
             <input
-              id="account_holder_doc"
-              name="account_holder_doc"
-              type="text"
-              className="input-field font-mono"
-              placeholder="Só dígitos"
-              defaultValue={v.account_holder_doc ?? ''}
+              id="account_holder_doc" name="account_holder_doc" type="text"
+              className="input-field font-mono" placeholder="Só dígitos"
+              value={holderDoc} onChange={(e) => setHolderDoc(e.target.value)}
             />
             {fieldErrors?.account_holder_doc && (
               <p className="form-error">{fieldErrors.account_holder_doc}</p>
@@ -261,29 +256,24 @@ export function DadosBancariosForm({ supplierId, supplierName }: Props) {
       <section className="bg-white border border-neutral-200 rounded-lg p-5 space-y-3">
         <h2 className="text-sm font-semibold text-maxfem-ink">Motivo da alteração</h2>
         <textarea
-          id="reason"
-          name="reason"
-          rows={3}
-          maxLength={500}
+          id="reason" name="reason" rows={3} maxLength={500}
           className="input-field"
-          placeholder="Ex: Fornecedor migrou de banco. Validado por telefone com gerente em 15/05."
-          defaultValue={v.reason ?? ''}
+          placeholder="Ex: Fornecedor migrou de banco. Validado por telefone."
+          value={reason} onChange={(e) => setReason(e.target.value)}
           aria-invalid={!!fieldErrors?.reason}
         />
         {fieldErrors?.reason && <p className="form-error">{fieldErrors.reason}</p>}
 
         <label
           className={[
-            'flex items-start gap-2 text-sm p-2 rounded',
-            fieldErrors?.confirm ? 'bg-rose-50 border border-rose-300' : '',
+            'flex items-start gap-2 text-sm p-2 rounded cursor-pointer',
+            fieldErrors?.confirm ? 'bg-rose-50 border border-rose-300' : 'hover:bg-neutral-50',
           ]
             .filter(Boolean)
             .join(' ')}
         >
           <input
-            type="checkbox"
-            name="confirm"
-            value="true"
+            type="checkbox" name="confirm" value="true"
             checked={confirmChecked}
             onChange={(e) => setConfirmChecked(e.target.checked)}
             className="mt-0.5 w-4 h-4 rounded border-neutral-300 text-maxfem-pink focus:ring-maxfem-pink"
