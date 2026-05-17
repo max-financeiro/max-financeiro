@@ -35,7 +35,9 @@ export async function verifyHashChainAction(): Promise<VerifyResult> {
   }
 
   const admin = getAdminClient();
-  const { data, error } = await admin.rpc('verify_audit_hash_chain');
+  // RPC criada na migration 20260517000005; types do Supabase ainda não regenerados.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const { data, error } = await (admin.rpc as any)('verify_audit_hash_chain');
   if (error) return { ok: false, error: error.message };
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
