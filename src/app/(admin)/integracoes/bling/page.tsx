@@ -35,9 +35,10 @@ export default async function BlingIntegrationPage({
     .select('id, legal_name, trade_name, cnpj')
     .order('legal_name');
 
-  // Status atual de cada org (com ou sem credencial Bling)
+  // Status atual de cada org (com ou sem credencial Bling) — lê da view
+  // pública que NÃO expõe tokens (tokens só ficam acessíveis via RPC service_role).
   const { data: connected } = await supabase
-    .from('bling_credentials')
+    .from('bling_connection_status')
     .select('organization_id, connected_at, last_refresh_at, expires_at, active');
 
   // Últimos jobs (todas as orgs visíveis)
@@ -55,13 +56,13 @@ export default async function BlingIntegrationPage({
         <h1 className="text-2xl font-semibold text-maxfem-pink mb-1">Bling</h1>
         <p className="text-sm text-neutral-600">
           Conecte cada filial ao Bling pra sincronizar produtos, estoque e capturar NF-es
-          que chegaram fora do portal.
+          que chegaram fora do portal. O sync roda 1x por dia às 8h BRT.
         </p>
       </header>
 
       {sp.connected && (
         <div className="bg-emerald-50 border border-emerald-200 text-emerald-800 px-4 py-3 rounded-lg">
-          ✓ Bling conectado com sucesso. O sync vai rodar a cada 15 minutos.
+          ✓ Bling conectado com sucesso. O sync roda automaticamente 1x por dia às 8h (Brasília).
         </div>
       )}
 

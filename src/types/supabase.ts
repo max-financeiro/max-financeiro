@@ -1422,6 +1422,41 @@ export type Database = {
         }
         Relationships: []
       }
+      bling_connection_status: {
+        Row: {
+          active: boolean | null
+          connected_at: string | null
+          expires_at: string | null
+          last_refresh_at: string | null
+          organization_id: string | null
+          scope: string | null
+        }
+        Insert: {
+          active?: boolean | null
+          connected_at?: string | null
+          expires_at?: string | null
+          last_refresh_at?: string | null
+          organization_id?: string | null
+          scope?: string | null
+        }
+        Update: {
+          active?: boolean | null
+          connected_at?: string | null
+          expires_at?: string | null
+          last_refresh_at?: string | null
+          organization_id?: string | null
+          scope?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "bling_credentials_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: true
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
     }
     Functions: {
       accept_supplier_invitation: {
