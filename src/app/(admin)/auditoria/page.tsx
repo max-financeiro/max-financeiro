@@ -135,14 +135,18 @@ export default async function AuditoriaPage({
     .select('action')
     .order('action')
     .limit(500);
-  const uniqueActions = Array.from(new Set((distinctActions ?? []).map((d) => d.action)));
+  const uniqueActions = Array.from(
+    new Set((distinctActions ?? []).map((d) => d.action).filter((a): a is string => !!a)),
+  );
 
   const { data: distinctEntities } = await admin
     .from('audit_log_view')
     .select('entity_type')
     .order('entity_type')
     .limit(500);
-  const uniqueEntities = Array.from(new Set((distinctEntities ?? []).map((d) => d.entity_type)));
+  const uniqueEntities = Array.from(
+    new Set((distinctEntities ?? []).map((d) => d.entity_type).filter((e): e is string => !!e)),
+  );
 
   const totalCount = count ?? 0;
   const totalPages = Math.max(1, Math.ceil(totalCount / PAGE_SIZE));
@@ -257,12 +261,13 @@ export default async function AuditoriaPage({
               </thead>
               <tbody className="divide-y divide-neutral-100">
                 {entries.map((e) => {
-                  const category = ACTION_CATEGORIES[e.action] ?? 'Outros';
+                  const action = e.action ?? '';
+                  const category = ACTION_CATEGORIES[action] ?? 'Outros';
                   const u = e.user_id ? userMap[e.user_id] : null;
                   return (
-                    <tr key={e.id} className="hover:bg-neutral-50 align-top">
+                    <tr key={e.id ?? Math.random()} className="hover:bg-neutral-50 align-top">
                       <td className="px-4 py-2.5 whitespace-nowrap text-xs text-neutral-600">
-                        {formatDateTime(e.occurred_at)}
+                        {e.occurred_at ? formatDateTime(e.occurred_at) : '—'}
                       </td>
                       <td className="px-4 py-2.5 text-xs">
                         {u ? (
@@ -283,7 +288,7 @@ export default async function AuditoriaPage({
                           {category}
                         </span>
                         <div className="text-xs font-mono text-neutral-700 mt-0.5">
-                          {e.action}
+                          {action}
                         </div>
                       </td>
                       <td className="px-4 py-2.5 text-xs font-mono text-neutral-600">
