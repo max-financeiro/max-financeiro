@@ -102,6 +102,12 @@ export default async function CAPDetailPage({
   const isManager = role === 'financial_manager';
   const isAnalyst = role === 'financial_analyst';
 
+  // Edição permitida em qualquer status que não seja final.
+  // Mesmo critério da action updatePayableAction.
+  const canEdit =
+    !['paid', 'partially_paid', 'sent_to_bank', 'rejected', 'cancelled'].includes(cap.status) &&
+    (isMaster || isManager || isAnalyst);
+
   // Permissões pra ações
   const canApprove =
     cap.status === 'pending_approval' &&
@@ -147,17 +153,42 @@ export default async function CAPDetailPage({
               {supplier?.legal_name ?? '(sem fornecedor)'}
             </p>
           </div>
-          <div className="text-right">
-            <p className="font-mono text-2xl font-semibold text-maxfem-ink">
-              {formatBRL(cap.amount)}
-            </p>
-            <span
-              className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium mt-1 ${
-                STATUS_BADGE[cap.status] ?? 'bg-neutral-100 text-neutral-700'
-              }`}
-            >
-              {STATUS_LABEL[cap.status] ?? cap.status}
-            </span>
+          <div className="flex items-start gap-4">
+            {canEdit && (
+              <Link
+                href={`/contas-a-pagar/${cap.id}/editar`}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-ink-200 bg-surface-raised text-body-sm font-medium text-ink-900 hover:bg-ink-50 hover:border-ink-300 transition-all active:scale-[0.98]"
+              >
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  width="14"
+                  height="14"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  aria-hidden="true"
+                >
+                  <path d="M12 20h9" />
+                  <path d="M16.5 3.5a2.121 2.121 0 1 1 3 3L7 19l-4 1 1-4Z" />
+                </svg>
+                Editar
+              </Link>
+            )}
+            <div className="text-right">
+              <p className="font-mono text-2xl font-semibold text-maxfem-ink">
+                {formatBRL(cap.amount)}
+              </p>
+              <span
+                className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium mt-1 ${
+                  STATUS_BADGE[cap.status] ?? 'bg-neutral-100 text-neutral-700'
+                }`}
+              >
+                {STATUS_LABEL[cap.status] ?? cap.status}
+              </span>
+            </div>
           </div>
         </div>
       </header>
