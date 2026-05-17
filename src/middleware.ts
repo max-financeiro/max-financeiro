@@ -14,17 +14,20 @@ import { NextResponse, type NextRequest } from 'next/server';
 import { generateNonce, buildCsp, CSP_NONCE_HEADER } from '@/lib/csp/nonce';
 import { updateSession } from '@/lib/supabase/middleware';
 
-// Rotas totalmente públicas (sem qualquer guard)
+// Rotas totalmente públicas (sem qualquer guard).
+// /auth/callback PRECISA estar aqui porque é ele quem CRIA a sessão (troca
+// magic-link code por session) — bloqueá-lo por "no user" trava o login.
 const PUBLIC_ROUTES = [
   '/login',
   '/portal/login',
+  '/auth/callback',
   '/api/health',
   '/legal/privacidade',
   '/legal/termos',
 ];
 
 // Rotas de auth: precisam de user logado mas NÃO de AAL2 (são parte do fluxo de chegar lá)
-const AUTH_FLOW_ROUTES = ['/auth/2fa/enroll', '/auth/2fa/verify', '/auth/callback', '/auth/logout'];
+const AUTH_FLOW_ROUTES = ['/auth/2fa/enroll', '/auth/2fa/verify', '/auth/logout'];
 
 // Portal do fornecedor: requer user autenticado mas NÃO requer AAL2 (TOTP).
 // Suppliers usam magic link sem 2FA. Pages /portal/* validam role='supplier' por dentro.
