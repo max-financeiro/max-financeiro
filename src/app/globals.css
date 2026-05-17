@@ -2,30 +2,172 @@
 @tailwind components;
 @tailwind utilities;
 
+:root {
+  --color-pink-500: #E94C7B;
+  --color-pink-600: #D63F6E;
+  --color-ink-900: #0F0E0C;
+  --color-surface: #FAF6F1;
+  --color-surface-raised: #FFFFFF;
+
+  --radius-lg: 10px;
+  --radius-xl: 14px;
+
+  --shadow-sm: 0 1px 3px 0 rgb(34 32 28 / 0.06), 0 1px 2px -1px rgb(34 32 28 / 0.04);
+  --shadow-md: 0 8px 16px -4px rgb(34 32 28 / 0.08), 0 4px 8px -2px rgb(34 32 28 / 0.04);
+
+  font-feature-settings: "cv11", "ss01", "ss03";
+}
+
 @layer base {
   html {
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
+    text-rendering: optimizeLegibility;
   }
+
   body {
-    @apply bg-maxfem-cream text-maxfem-ink font-sans;
+    @apply bg-surface text-ink-900 font-sans;
+    font-size: 14px;
+    line-height: 22px;
+    font-feature-settings: "cv11", "ss01", "ss03";
+  }
+
+  .nums,
+  table {
+    font-variant-numeric: tabular-nums;
+  }
+
+  :focus-visible {
+    @apply outline-none ring-2 ring-pink-500/50 ring-offset-2 ring-offset-surface;
+  }
+
+  h1, h2, h3, h4, h5, h6 {
+    @apply font-semibold text-ink-900;
+    letter-spacing: -0.01em;
+  }
+
+  a {
+    @apply text-pink-700 underline-offset-2;
+  }
+  a:hover {
+    @apply text-pink-800 underline;
+  }
+
+  ::selection {
+    @apply bg-pink-200 text-ink-900;
+  }
+
+  ::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+  ::-webkit-scrollbar-thumb {
+    @apply bg-ink-300 rounded-full;
+    border: 2px solid transparent;
+    background-clip: content-box;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    @apply bg-ink-400;
+    border: 2px solid transparent;
+    background-clip: content-box;
   }
 }
 
 @layer components {
   .btn-primary {
-    @apply inline-flex items-center justify-center px-4 py-2.5 rounded-md bg-maxfem-pink text-white font-medium text-sm transition-colors hover:bg-maxfem-pink-hover focus:outline-none focus:ring-2 focus:ring-maxfem-pink focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed;
+    @apply inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg
+           bg-ink-900 text-surface-raised font-medium
+           transition-all duration-150 ease-out-expo
+           hover:bg-ink-700 active:scale-[0.98]
+           disabled:opacity-40 disabled:cursor-not-allowed disabled:active:scale-100;
   }
+
   .btn-secondary {
-    @apply inline-flex items-center justify-center px-4 py-2.5 rounded-md bg-white border border-neutral-300 text-maxfem-ink font-medium text-sm transition-colors hover:bg-neutral-50 focus:outline-none focus:ring-2 focus:ring-maxfem-pink focus:ring-offset-2 disabled:opacity-50;
+    @apply inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg
+           bg-surface-raised text-ink-900 font-medium border border-ink-200
+           transition-all duration-150 ease-out-expo
+           hover:bg-ink-50 hover:border-ink-300 active:scale-[0.98]
+           disabled:opacity-40 disabled:cursor-not-allowed;
   }
+
+  .btn-ghost {
+    @apply inline-flex items-center justify-center gap-2 px-3 py-2 rounded-lg
+           text-ink-700 font-medium
+           transition-colors hover:bg-ink-100 hover:text-ink-900
+           disabled:opacity-40 disabled:cursor-not-allowed;
+  }
+
+  .btn-pink {
+    @apply inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg
+           bg-pink-600 text-white font-medium
+           transition-all duration-150 ease-out-expo
+           hover:bg-pink-700 active:scale-[0.98]
+           shadow-sm hover:shadow-md
+           disabled:opacity-40 disabled:cursor-not-allowed disabled:active:scale-100;
+  }
+
+  .btn-danger {
+    @apply inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg
+           bg-danger-600 text-white font-medium
+           transition-all duration-150 ease-out-expo
+           hover:bg-danger-700 active:scale-[0.98]
+           disabled:opacity-40 disabled:cursor-not-allowed;
+  }
+
   .input-field {
-    @apply w-full px-3 py-2.5 rounded-md border border-neutral-300 bg-white text-maxfem-ink placeholder:text-neutral-400 focus:border-maxfem-pink focus:outline-none focus:ring-1 focus:ring-maxfem-pink;
+    @apply w-full px-3 py-2.5 rounded-lg
+           bg-surface-raised text-ink-900
+           border border-ink-200
+           placeholder:text-ink-400
+           transition-colors
+           focus:border-pink-500 focus:outline-none focus:ring-2 focus:ring-pink-500/20
+           disabled:opacity-50 disabled:bg-ink-50;
   }
+
   .form-label {
-    @apply block text-sm font-medium text-maxfem-ink mb-1.5;
+    @apply block text-caption font-medium text-ink-700 mb-1.5;
+    letter-spacing: 0.01em;
+    text-transform: uppercase;
   }
+
+  .form-hint {
+    @apply mt-1.5 text-caption text-ink-500;
+  }
+
   .form-error {
-    @apply mt-2 text-sm text-error;
+    @apply mt-1.5 text-caption text-danger-700;
+  }
+
+  .card {
+    @apply bg-surface-raised border border-ink-200 rounded-xl shadow-xs;
+  }
+
+  .card-padded {
+    @apply card p-5;
+  }
+
+  .pill {
+    @apply inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full
+           text-caption font-medium border;
+  }
+  .pill-success { @apply bg-success-50 text-success-700 border-success-100; }
+  .pill-warning { @apply bg-warning-50 text-warning-700 border-warning-100; }
+  .pill-danger  { @apply bg-danger-50 text-danger-700 border-danger-100; }
+  .pill-info    { @apply bg-info-50 text-info-700 border-info-100; }
+  .pill-neutral { @apply bg-ink-100 text-ink-700 border-ink-200; }
+  .pill-pink    { @apply bg-pink-50 text-pink-700 border-pink-100; }
+}
+
+@layer utilities {
+  .container-page {
+    @apply mx-auto max-w-6xl px-6;
+  }
+
+  .glow-pink {
+    box-shadow: 0 0 0 1px rgb(233 76 123 / 0.20), 0 8px 24px -8px rgb(233 76 123 / 0.25);
+  }
+
+  .text-muted {
+    @apply text-ink-500;
   }
 }

@@ -1,11 +1,15 @@
 import { redirect } from 'next/navigation';
 import { createClient } from '@/lib/supabase/server';
 import { Sidebar } from './Sidebar';
+import { Badge } from '@/components/ui';
 
-/**
- * Layout do admin (app.financeiromaxfem.com.br).
- * Bloqueia fornecedores — fornecedor vai pra /portal.
- */
+const ROLE_LABELS: Record<string, string> = {
+  master: 'Master',
+  financial_manager: 'Gestor Financeiro',
+  financial_analyst: 'Analista',
+  accountant_readonly: 'Contador',
+};
+
 export default async function AdminLayout({ children }: { children: React.ReactNode }) {
   const supabase = await createClient();
   const {
@@ -24,21 +28,31 @@ export default async function AdminLayout({ children }: { children: React.ReactN
   if (profile.role === 'supplier') redirect('/portal');
 
   return (
-    <div className="min-h-screen bg-maxfem-cream">
-      <header className="bg-white border-b border-neutral-200">
-        <div className="px-4 sm:px-6 lg:px-8 h-14 flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <span className="font-display text-lg font-semibold text-maxfem-pink">
-              Financeiro Maxfem
+    <div className="min-h-screen bg-surface">
+      <header className="sticky top-0 z-30 bg-surface-raised/80 backdrop-blur-md border-b border-ink-200/60">
+        <div className="px-6 h-14 flex items-center justify-between gap-6">
+          <div className="flex items-center gap-3 min-w-0">
+            <span className="inline-flex items-center justify-center w-7 h-7 rounded-md bg-ink-900 text-surface-raised font-semibold text-caption">
+              M
             </span>
-            <span className="text-xs text-neutral-500 hidden sm:inline">
-              · {profile.role}
-            </span>
+            <div className="flex items-baseline gap-2 min-w-0">
+              <span className="font-semibold text-body text-ink-900 tracking-tight">
+                Financeiro
+              </span>
+              <span className="text-body-sm text-ink-500 truncate">Maxfem</span>
+            </div>
           </div>
-          <div className="flex items-center gap-3 text-sm">
-            <span className="text-neutral-700 hidden sm:inline">{profile.full_name}</span>
+
+          <div className="flex items-center gap-4">
+            <div className="hidden sm:flex items-center gap-2">
+              <span className="text-body-sm text-ink-700">{profile.full_name}</span>
+              <Badge tone="neutral">{ROLE_LABELS[profile.role] ?? profile.role}</Badge>
+            </div>
             <form action="/auth/logout" method="POST">
-              <button type="submit" className="text-neutral-600 hover:text-maxfem-pink">
+              <button
+                type="submit"
+                className="text-caption font-medium text-ink-500 hover:text-ink-900 transition-colors"
+              >
                 Sair
               </button>
             </form>
@@ -48,7 +62,7 @@ export default async function AdminLayout({ children }: { children: React.ReactN
 
       <div className="flex">
         <Sidebar />
-        <main className="flex-1 px-4 sm:px-6 lg:px-8 py-8 max-w-7xl">{children}</main>
+        <main className="flex-1 min-w-0 px-6 py-8 animate-fade-in">{children}</main>
       </div>
     </div>
   );

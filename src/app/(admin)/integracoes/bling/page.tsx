@@ -1,5 +1,6 @@
 import { createClient } from '@/lib/supabase/server';
 import { redirect } from 'next/navigation';
+import { Badge, Card, PageHeader, StatusBadge } from '@/components/ui';
 import { ConnectBlingForm } from './ConnectBlingForm';
 
 type SearchParams = { connected?: string; error?: string };
@@ -51,72 +52,72 @@ export default async function BlingIntegrationPage({
   const connectedMap = new Map((connected ?? []).map((c) => [c.organization_id, c]));
 
   return (
-    <div className="max-w-4xl mx-auto p-6 space-y-8">
-      <header>
-        <h1 className="text-2xl font-semibold text-maxfem-pink mb-1">Bling</h1>
-        <p className="text-sm text-neutral-600">
-          Conecte cada filial ao Bling pra sincronizar produtos, estoque e capturar NF-es
-          que chegaram fora do portal. O sync roda 1x por dia às 8h BRT.
-        </p>
-      </header>
+    <div className="container-page max-w-4xl space-y-10">
+      <PageHeader
+        eyebrow="Integração"
+        title="Bling"
+        description="Conecte cada filial pra sincronizar produtos, estoque e capturar NF-es que chegaram fora do portal. Sync 1x/dia às 8h BRT."
+      />
 
       {sp.connected && (
-        <div className="bg-emerald-50 border border-emerald-200 text-emerald-800 px-4 py-3 rounded-lg">
-          ✓ Bling conectado com sucesso. O sync roda automaticamente 1x por dia às 8h (Brasília).
-        </div>
+        <Card tone="pink" className="px-4 py-3 flex items-center gap-3">
+          <span className="text-pink-700">✦</span>
+          <span className="text-body-sm text-pink-900">
+            Bling conectado com sucesso. O sync roda automaticamente 1x por dia às 8h (Brasília).
+          </span>
+        </Card>
       )}
 
       {sp.error && (
-        <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg">
-          <p className="font-medium">Falha ao conectar</p>
-          <p className="text-sm mt-1">{sp.error}</p>
-        </div>
+        <Card className="px-4 py-3 border-danger-100 bg-danger-50">
+          <p className="text-body-sm font-medium text-danger-900">Falha ao conectar</p>
+          <p className="text-caption text-danger-700 mt-1">{sp.error}</p>
+        </Card>
       )}
 
       <section className="space-y-4">
-        <h2 className="text-lg font-semibold text-neutral-800">Conexões por filial</h2>
-        <div className="bg-white rounded-lg border border-neutral-200 divide-y">
+        <h2 className="text-heading font-semibold text-ink-900 tracking-tight">
+          Conexões por filial
+        </h2>
+        <Card className="divide-y divide-ink-200/60">
           {(orgs ?? []).map((org) => {
             const status = connectedMap.get(org.id);
             const connected = Boolean(status?.active);
             return (
-              <div key={org.id} className="p-4 flex items-start justify-between gap-4">
+              <div key={org.id} className="p-5 flex items-start justify-between gap-4">
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center gap-3 flex-wrap">
-                    <p className="font-medium text-neutral-900">
+                    <p className="font-semibold text-body text-ink-900">
                       {org.trade_name || org.legal_name}
                     </p>
                     {connected ? (
-                      <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-emerald-100 text-emerald-800 border border-emerald-200">
-                        <span className="w-2 h-2 rounded-full bg-emerald-500" />
-                        Conectado
-                      </span>
+                      <Badge tone="success" dot>Conectado</Badge>
                     ) : (
-                      <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-neutral-100 text-neutral-600 border border-neutral-200">
-                        <span className="w-2 h-2 rounded-full bg-neutral-400" />
-                        Não conectado
-                      </span>
+                      <Badge tone="neutral" dot>Não conectado</Badge>
                     )}
                   </div>
-                  <p className="text-xs text-neutral-500 font-mono mt-1">{org.cnpj}</p>
+                  <p className="text-caption text-ink-500 font-mono mt-1">{org.cnpj}</p>
                   {connected && (
-                    <p className="text-xs text-neutral-500 mt-1">
+                    <p className="text-caption text-ink-500 mt-2">
                       Conectado em{' '}
-                      {status?.connected_at &&
-                        new Date(status.connected_at).toLocaleString('pt-BR')}
+                      <span className="nums">
+                        {status?.connected_at &&
+                          new Date(status.connected_at).toLocaleString('pt-BR')}
+                      </span>
                       {status?.last_refresh_at && (
                         <>
-                          {' '}
-                          · último refresh:{' '}
-                          {new Date(status.last_refresh_at).toLocaleString('pt-BR')}
+                          {' '}· último refresh:{' '}
+                          <span className="nums">
+                            {new Date(status.last_refresh_at).toLocaleString('pt-BR')}
+                          </span>
                         </>
                       )}
                     </p>
                   )}
                 </div>
-                <details className="text-sm shrink-0">
-                  <summary className="cursor-pointer text-pink-600 hover:underline list-none">
-                    {connected ? 'Reconectar' : 'Conectar'}
+                <details className="shrink-0">
+                  <summary className="cursor-pointer text-caption font-medium text-pink-700 hover:text-pink-800 list-none">
+                    {connected ? 'Reconectar' : 'Conectar →'}
                   </summary>
                   <div className="mt-3 w-[420px]">
                     <ConnectBlingForm
@@ -128,67 +129,50 @@ export default async function BlingIntegrationPage({
               </div>
             );
           })}
-        </div>
+        </Card>
       </section>
 
       <section>
-        <h2 className="text-lg font-semibold text-neutral-800 mb-3">Últimos syncs</h2>
-        <div className="bg-white rounded-lg border border-neutral-200 overflow-hidden">
-          <table className="min-w-full divide-y divide-neutral-200 text-sm">
-            <thead className="bg-neutral-50 text-xs uppercase text-neutral-500">
+        <h2 className="text-heading font-semibold text-ink-900 tracking-tight mb-4">
+          Últimos syncs
+        </h2>
+        <Card className="overflow-hidden">
+          <table className="w-full">
+            <thead className="bg-surface-sunken">
               <tr>
-                <th className="px-4 py-2 text-left">Tipo</th>
-                <th className="px-4 py-2 text-left">Status</th>
-                <th className="px-4 py-2 text-right">Registros</th>
-                <th className="px-4 py-2 text-left">Início</th>
-                <th className="px-4 py-2 text-left">Erro</th>
+                <th className="px-4 py-2.5 text-left text-micro font-semibold text-ink-500 uppercase tracking-wider">Tipo</th>
+                <th className="px-4 py-2.5 text-left text-micro font-semibold text-ink-500 uppercase tracking-wider">Status</th>
+                <th className="px-4 py-2.5 text-right text-micro font-semibold text-ink-500 uppercase tracking-wider">Registros</th>
+                <th className="px-4 py-2.5 text-left text-micro font-semibold text-ink-500 uppercase tracking-wider">Início</th>
+                <th className="px-4 py-2.5 text-left text-micro font-semibold text-ink-500 uppercase tracking-wider">Erro</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-neutral-200">
+            <tbody className="divide-y divide-ink-200/60">
               {(recentJobs ?? []).map((j) => (
-                <tr key={j.id}>
-                  <td className="px-4 py-2 font-mono text-xs">{j.sync_type}</td>
-                  <td className="px-4 py-2">
-                    <StatusBadge status={j.status} />
-                  </td>
-                  <td className="px-4 py-2 text-right">{j.records_synced ?? '—'}</td>
-                  <td className="px-4 py-2 text-neutral-500">
+                <tr key={j.id} className="hover:bg-surface-sunken/50 transition-colors">
+                  <td className="px-4 py-3 font-mono text-caption text-ink-700">{j.sync_type}</td>
+                  <td className="px-4 py-3"><StatusBadge status={j.status} /></td>
+                  <td className="px-4 py-3 text-right text-body-sm nums">{j.records_synced ?? '—'}</td>
+                  <td className="px-4 py-3 text-caption text-ink-500 nums">
                     {j.started_at ? new Date(j.started_at).toLocaleString('pt-BR') : '—'}
                   </td>
-                  <td className="px-4 py-2 text-red-600 text-xs max-w-xs truncate">
+                  <td className="px-4 py-3 text-caption text-danger-700 max-w-xs truncate">
                     {j.error_message ?? ''}
                   </td>
                 </tr>
               ))}
               {(!recentJobs || recentJobs.length === 0) && (
                 <tr>
-                  <td colSpan={5} className="px-4 py-6 text-center text-neutral-500">
+                  <td colSpan={5} className="px-4 py-10 text-center text-body-sm text-ink-500">
                     Nenhum sync executado ainda.
                   </td>
                 </tr>
               )}
             </tbody>
           </table>
-        </div>
+        </Card>
       </section>
     </div>
   );
 }
 
-function StatusBadge({ status }: { status: string }) {
-  const colors: Record<string, string> = {
-    completed: 'bg-emerald-100 text-emerald-800',
-    running: 'bg-blue-100 text-blue-800',
-    pending: 'bg-neutral-100 text-neutral-700',
-    failed: 'bg-red-100 text-red-800',
-  };
-  return (
-    <span
-      className={`inline-block px-2 py-0.5 text-xs font-medium rounded ${
-        colors[status] ?? 'bg-neutral-100 text-neutral-700'
-      }`}
-    >
-      {status}
-    </span>
-  );
-}

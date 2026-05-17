@@ -2,8 +2,9 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
+import { cn } from '@/components/ui';
 
-type Item = { href: string; label: string };
+type Item = { href: string; label: string; mono?: boolean };
 type Section = { title: string; items: Item[] };
 
 const SECTIONS: Section[] = [
@@ -26,7 +27,7 @@ const SECTIONS: Section[] = [
   },
   {
     title: 'Caixa',
-    items: [{ href: '/caixa/nfs-orfas', label: 'NFs órfãs (Bling)' }],
+    items: [{ href: '/caixa/nfs-orfas', label: 'NFs órfãs · Bling' }],
   },
   {
     title: 'Integrações',
@@ -42,28 +43,33 @@ export function Sidebar() {
   const pathname = usePathname();
 
   return (
-    <aside className="w-56 shrink-0 bg-white border-r border-neutral-200 min-h-[calc(100vh-3.5rem)] py-6 px-3">
-      <nav className="space-y-6">
+    <aside className="w-60 shrink-0 min-h-[calc(100vh-3.5rem)] border-r border-ink-200/60 bg-surface-raised/40">
+      <nav className="sticky top-14 py-6 px-3 space-y-7">
         {SECTIONS.map((section) => (
           <div key={section.title}>
-            <h2 className="px-3 mb-1 text-xs font-semibold text-neutral-500 uppercase tracking-wider">
+            <h2 className="px-3 mb-1.5 text-micro font-semibold text-ink-500 uppercase tracking-wider">
               {section.title}
             </h2>
             <ul className="space-y-0.5">
               {section.items.map((item) => {
-                const active = pathname === item.href || pathname.startsWith(`${item.href}/`);
+                const active =
+                  pathname === item.href ||
+                  (item.href !== '/' && pathname.startsWith(`${item.href}/`));
                 return (
                   <li key={item.href}>
                     <Link
                       href={item.href}
-                      className={[
-                        'block px-3 py-1.5 rounded text-sm transition-colors',
+                      className={cn(
+                        'flex items-center gap-2 px-3 py-1.5 rounded-md text-body-sm transition-all duration-150 ease-out-expo',
                         active
-                          ? 'bg-maxfem-pink/10 text-maxfem-pink font-medium'
-                          : 'text-neutral-700 hover:bg-neutral-100',
-                      ].join(' ')}
+                          ? 'bg-ink-900 text-surface-raised font-medium shadow-xs'
+                          : 'text-ink-700 hover:bg-ink-100 hover:text-ink-900',
+                      )}
                     >
-                      {item.label}
+                      {active && <span className="w-1 h-1 rounded-full bg-pink-400" />}
+                      <span className={cn(active && 'pl-0', !active && 'pl-3')}>
+                        {item.label}
+                      </span>
                     </Link>
                   </li>
                 );
@@ -71,6 +77,14 @@ export function Sidebar() {
             </ul>
           </div>
         ))}
+
+        <div className="px-3 pt-6 mt-6 border-t border-ink-200/60">
+          <p className="text-micro text-ink-400 leading-relaxed">
+            v0.1 · Sprint 7-A
+            <br />
+            Maxfem · 2026
+          </p>
+        </div>
       </nav>
     </aside>
   );

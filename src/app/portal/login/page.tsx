@@ -24,44 +24,53 @@ export default async function PortalLoginPage({
   if (user) redirect(next);
 
   return (
-    <main className="min-h-screen flex items-center justify-center px-4 py-12 bg-maxfem-cream">
-      <div className="w-full max-w-md">
-        <div className="mb-8 text-center">
-          <h1 className="font-display text-3xl font-semibold text-maxfem-pink">Portal Maxfem</h1>
-          <p className="text-sm text-neutral-600 mt-2">Acesso de fornecedores</p>
+    <main className="min-h-screen flex items-center justify-center px-4 py-12 bg-surface">
+      <div className="w-full max-w-sm animate-fade-in">
+        <div className="mb-10 text-center">
+          <div className="inline-flex items-center gap-2 mb-6">
+            <span className="inline-flex items-center justify-center w-9 h-9 rounded-lg bg-pink-600 text-white font-semibold">
+              M
+            </span>
+            <span className="text-heading font-semibold tracking-tight text-ink-900">
+              Portal<span className="text-ink-400 mx-1">·</span>Fornecedor
+            </span>
+          </div>
+          <h1 className="text-display-sm font-semibold text-ink-900 tracking-tight">
+            {sent ? 'Confira seu email' : 'Entrar no portal'}
+          </h1>
+          <p className="mt-2 text-body-sm text-ink-500">
+            {sent
+              ? 'Mandamos o link mágico. Expira em 1 hora.'
+              : 'Vamos enviar um link mágico pro seu email.'}
+          </p>
         </div>
 
-        <div className="bg-white border border-neutral-200 rounded-lg p-6 shadow-sm">
+        <div className="bg-surface-raised border border-ink-200/60 rounded-xl p-6 shadow-md">
           {sent ? (
             <div className="text-center space-y-3">
-              <h2 className="text-lg font-semibold text-maxfem-ink">Link enviado!</h2>
-              <p className="text-sm text-neutral-600">
-                Verifique seu email. O link expira em 1 hora e funciona uma única vez.
+              <div className="mx-auto w-12 h-12 rounded-full bg-pink-50 text-pink-700 flex items-center justify-center text-xl">
+                ✦
+              </div>
+              <p className="text-body-sm text-ink-700">
+                Link válido por 1 hora · uso único.
               </p>
-              <p className="text-xs text-neutral-500">
-                Não recebeu? Confira a pasta de spam ou{' '}
-                <a href="/portal/login" className="text-maxfem-pink hover:underline">
-                  tente novamente
+              <p className="text-caption text-ink-500">
+                Não recebeu?{' '}
+                <a href="/portal/login" className="text-pink-700 hover:underline font-medium">
+                  Tentar novamente
                 </a>
-                .
               </p>
             </div>
           ) : (
-            <>
-              <p className="text-sm text-neutral-700 mb-4">
-                Informe seu email cadastrado. Enviaremos um link mágico pra você entrar.
-              </p>
-              <PortalLoginForm next={next} />
-            </>
+            <PortalLoginForm next={next} />
           )}
         </div>
 
-        <p className="text-center text-xs text-neutral-500 mt-6">
-          É administrador da Maxfem?{' '}
-          <a href="/login" className="text-maxfem-pink hover:underline">
-            Entre por aqui
+        <p className="text-center text-caption text-ink-500 mt-6">
+          Administrador Maxfem?{' '}
+          <a href="/login" className="text-pink-700 hover:underline font-medium">
+            Entrar pelo admin
           </a>
-          .
         </p>
       </div>
     </main>
