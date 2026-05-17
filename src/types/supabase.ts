@@ -93,6 +93,238 @@ export type Database = {
   }
   public: {
     Tables: {
+      accounts_payable: {
+        Row: {
+          account_id: string | null
+          amount: number
+          amount_paid: number
+          amount_pending: number | null
+          approval_level_required: string | null
+          approved_at: string | null
+          beneficiary_bank_details: Json | null
+          boleto_barcode: string | null
+          cancelled_at: string | null
+          competence_date: string
+          cost_center_id: string | null
+          created_at: string
+          created_by: string | null
+          deleted_at: string | null
+          description: string | null
+          due_date: string
+          fiscal_document_id: string | null
+          id: string
+          issue_date: string
+          notes: string | null
+          organization_id: string
+          payment_method: string
+          pix_key: string | null
+          pix_key_type: string | null
+          reference_number: string | null
+          rejected_at: string | null
+          source: string
+          status: string
+          submitted_at: string | null
+          submitted_by: string | null
+          supplier_id: string | null
+          tags: string[] | null
+          updated_at: string
+        }
+        Insert: {
+          account_id?: string | null
+          amount: number
+          amount_paid?: number
+          amount_pending?: number | null
+          approval_level_required?: string | null
+          approved_at?: string | null
+          beneficiary_bank_details?: Json | null
+          boleto_barcode?: string | null
+          cancelled_at?: string | null
+          competence_date: string
+          cost_center_id?: string | null
+          created_at?: string
+          created_by?: string | null
+          deleted_at?: string | null
+          description?: string | null
+          due_date: string
+          fiscal_document_id?: string | null
+          id?: string
+          issue_date: string
+          notes?: string | null
+          organization_id: string
+          payment_method: string
+          pix_key?: string | null
+          pix_key_type?: string | null
+          reference_number?: string | null
+          rejected_at?: string | null
+          source: string
+          status?: string
+          submitted_at?: string | null
+          submitted_by?: string | null
+          supplier_id?: string | null
+          tags?: string[] | null
+          updated_at?: string
+        }
+        Update: {
+          account_id?: string | null
+          amount?: number
+          amount_paid?: number
+          amount_pending?: number | null
+          approval_level_required?: string | null
+          approved_at?: string | null
+          beneficiary_bank_details?: Json | null
+          boleto_barcode?: string | null
+          cancelled_at?: string | null
+          competence_date?: string
+          cost_center_id?: string | null
+          created_at?: string
+          created_by?: string | null
+          deleted_at?: string | null
+          description?: string | null
+          due_date?: string
+          fiscal_document_id?: string | null
+          id?: string
+          issue_date?: string
+          notes?: string | null
+          organization_id?: string
+          payment_method?: string
+          pix_key?: string | null
+          pix_key_type?: string | null
+          reference_number?: string | null
+          rejected_at?: string | null
+          source?: string
+          status?: string
+          submitted_at?: string | null
+          submitted_by?: string | null
+          supplier_id?: string | null
+          tags?: string[] | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "accounts_payable_account_id_fkey"
+            columns: ["account_id"]
+            isOneToOne: false
+            referencedRelation: "chart_of_accounts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "accounts_payable_cost_center_id_fkey"
+            columns: ["cost_center_id"]
+            isOneToOne: false
+            referencedRelation: "cost_centers"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "accounts_payable_fiscal_document_id_fkey"
+            columns: ["fiscal_document_id"]
+            isOneToOne: false
+            referencedRelation: "fiscal_documents"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "accounts_payable_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "accounts_payable_supplier_id_fkey"
+            columns: ["supplier_id"]
+            isOneToOne: false
+            referencedRelation: "business_partners"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      approval_overrides: {
+        Row: {
+          created_at: string
+          group_id: string
+          id: string
+          is_active: boolean
+          override_type: string
+          parameters: Json | null
+          required_approval_level: string
+        }
+        Insert: {
+          created_at?: string
+          group_id: string
+          id?: string
+          is_active?: boolean
+          override_type: string
+          parameters?: Json | null
+          required_approval_level: string
+        }
+        Update: {
+          created_at?: string
+          group_id?: string
+          id?: string
+          is_active?: boolean
+          override_type?: string
+          parameters?: Json | null
+          required_approval_level?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "approval_overrides_group_id_fkey"
+            columns: ["group_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      approval_rules: {
+        Row: {
+          created_at: string
+          group_id: string
+          id: string
+          is_active: boolean
+          max_amount: number | null
+          min_amount: number
+          notes: string | null
+          priority: number
+          required_approval_level: string
+          rule_name: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          group_id: string
+          id?: string
+          is_active?: boolean
+          max_amount?: number | null
+          min_amount?: number
+          notes?: string | null
+          priority?: number
+          required_approval_level: string
+          rule_name: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          group_id?: string
+          id?: string
+          is_active?: boolean
+          max_amount?: number | null
+          min_amount?: number
+          notes?: string | null
+          priority?: number
+          required_approval_level?: string
+          rule_name?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "approval_rules_group_id_fkey"
+            columns: ["group_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       bank_accounts: {
         Row: {
           account_digit: string | null
@@ -345,6 +577,157 @@ export type Database = {
           },
         ]
       }
+      fiscal_document_items: {
+        Row: {
+          cfop: string | null
+          description: string
+          fiscal_document_id: string
+          id: string
+          line_number: number | null
+          ncm: string | null
+          product_sku: string | null
+          quantity: number | null
+          taxes: Json | null
+          total_price: number | null
+          unit: string | null
+          unit_price: number | null
+        }
+        Insert: {
+          cfop?: string | null
+          description: string
+          fiscal_document_id: string
+          id?: string
+          line_number?: number | null
+          ncm?: string | null
+          product_sku?: string | null
+          quantity?: number | null
+          taxes?: Json | null
+          total_price?: number | null
+          unit?: string | null
+          unit_price?: number | null
+        }
+        Update: {
+          cfop?: string | null
+          description?: string
+          fiscal_document_id?: string
+          id?: string
+          line_number?: number | null
+          ncm?: string | null
+          product_sku?: string | null
+          quantity?: number | null
+          taxes?: Json | null
+          total_price?: number | null
+          unit?: string | null
+          unit_price?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "fiscal_document_items_fiscal_document_id_fkey"
+            columns: ["fiscal_document_id"]
+            isOneToOne: false
+            referencedRelation: "fiscal_documents"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      fiscal_documents: {
+        Row: {
+          access_key: string | null
+          bling_invoice_id: string | null
+          competence_date: string
+          created_at: string
+          created_by: string | null
+          deleted_at: string | null
+          direction: string
+          document_type: string
+          extracted_data: Json | null
+          id: string
+          issue_date: string
+          issuer_document: string
+          issuer_name: string
+          number: string
+          organization_id: string
+          pdf_storage_path: string | null
+          recipient_document: string
+          recipient_name: string | null
+          series: string | null
+          source: string
+          status: string
+          total_amount: number
+          total_discount: number | null
+          total_freight: number | null
+          total_taxes: number | null
+          updated_at: string
+          xml_storage_path: string | null
+        }
+        Insert: {
+          access_key?: string | null
+          bling_invoice_id?: string | null
+          competence_date: string
+          created_at?: string
+          created_by?: string | null
+          deleted_at?: string | null
+          direction: string
+          document_type: string
+          extracted_data?: Json | null
+          id?: string
+          issue_date: string
+          issuer_document: string
+          issuer_name: string
+          number: string
+          organization_id: string
+          pdf_storage_path?: string | null
+          recipient_document: string
+          recipient_name?: string | null
+          series?: string | null
+          source: string
+          status?: string
+          total_amount: number
+          total_discount?: number | null
+          total_freight?: number | null
+          total_taxes?: number | null
+          updated_at?: string
+          xml_storage_path?: string | null
+        }
+        Update: {
+          access_key?: string | null
+          bling_invoice_id?: string | null
+          competence_date?: string
+          created_at?: string
+          created_by?: string | null
+          deleted_at?: string | null
+          direction?: string
+          document_type?: string
+          extracted_data?: Json | null
+          id?: string
+          issue_date?: string
+          issuer_document?: string
+          issuer_name?: string
+          number?: string
+          organization_id?: string
+          pdf_storage_path?: string | null
+          recipient_document?: string
+          recipient_name?: string | null
+          series?: string | null
+          source?: string
+          status?: string
+          total_amount?: number
+          total_discount?: number | null
+          total_freight?: number | null
+          total_taxes?: number | null
+          updated_at?: string
+          xml_storage_path?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "fiscal_documents_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       organizations: {
         Row: {
           address: Json | null
@@ -394,6 +777,122 @@ export type Database = {
             columns: ["parent_id"]
             isOneToOne: false
             referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      payable_approvals: {
+        Row: {
+          approval_step: string
+          decided_at: string
+          decided_by: string | null
+          decided_by_role: string | null
+          decision: string
+          decision_notes: string | null
+          id: string
+          payable_id: string
+        }
+        Insert: {
+          approval_step: string
+          decided_at?: string
+          decided_by?: string | null
+          decided_by_role?: string | null
+          decision: string
+          decision_notes?: string | null
+          id?: string
+          payable_id: string
+        }
+        Update: {
+          approval_step?: string
+          decided_at?: string
+          decided_by?: string | null
+          decided_by_role?: string | null
+          decision?: string
+          decision_notes?: string | null
+          id?: string
+          payable_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "payable_approvals_payable_id_fkey"
+            columns: ["payable_id"]
+            isOneToOne: false
+            referencedRelation: "accounts_payable"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      payments: {
+        Row: {
+          amount: number
+          bank_account_id: string | null
+          created_at: string
+          id: string
+          idempotency_key: string
+          payable_id: string
+          payment_date: string | null
+          payment_method: string
+          proof_storage_path: string | null
+          provider: string
+          provider_error_code: string | null
+          provider_error_message: string | null
+          provider_request_id: string | null
+          provider_status: string | null
+          requested_by: string | null
+          settled_at: string | null
+          updated_at: string
+        }
+        Insert: {
+          amount: number
+          bank_account_id?: string | null
+          created_at?: string
+          id?: string
+          idempotency_key: string
+          payable_id: string
+          payment_date?: string | null
+          payment_method: string
+          proof_storage_path?: string | null
+          provider?: string
+          provider_error_code?: string | null
+          provider_error_message?: string | null
+          provider_request_id?: string | null
+          provider_status?: string | null
+          requested_by?: string | null
+          settled_at?: string | null
+          updated_at?: string
+        }
+        Update: {
+          amount?: number
+          bank_account_id?: string | null
+          created_at?: string
+          id?: string
+          idempotency_key?: string
+          payable_id?: string
+          payment_date?: string | null
+          payment_method?: string
+          proof_storage_path?: string | null
+          provider?: string
+          provider_error_code?: string | null
+          provider_error_message?: string | null
+          provider_request_id?: string | null
+          provider_status?: string | null
+          requested_by?: string | null
+          settled_at?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "payments_bank_account_id_fkey"
+            columns: ["bank_account_id"]
+            isOneToOne: false
+            referencedRelation: "bank_accounts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "payments_payable_id_fkey"
+            columns: ["payable_id"]
+            isOneToOne: false
+            referencedRelation: "accounts_payable"
             referencedColumns: ["id"]
           },
         ]
@@ -666,6 +1165,10 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      calc_required_approval_level: {
+        Args: { p_payable_id: string }
+        Returns: string
+      }
       current_user_role: { Args: never; Returns: string }
       decrypt_bank_field: { Args: { p_ciphertext: string }; Returns: string }
       encrypt_bank_field: { Args: { p_plaintext: string }; Returns: string }

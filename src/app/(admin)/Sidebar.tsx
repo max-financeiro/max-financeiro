@@ -11,6 +11,7 @@ const SECTIONS: Section[] = [
     title: 'Operação',
     items: [
       { href: '/dashboard', label: 'Dashboard' },
+      { href: '/contas-a-pagar', label: 'Contas a pagar' },
     ],
   },
   {
