@@ -83,6 +83,17 @@ export type Database = {
         }
         Returns: string
       }
+      verify_hash_chain: {
+        Args: never
+        Returns: {
+          chain_intact: boolean
+          first_tamper_at: string
+          first_tamper_id: string
+          tampered_rows: number
+          total_rows: number
+          verified_rows: number
+        }[]
+      }
     }
     Enums: {
       [_ in never]: never
@@ -1162,7 +1173,54 @@ export type Database = {
       }
     }
     Views: {
-      [_ in never]: never
+      audit_log_view: {
+        Row: {
+          action: string | null
+          after_state: Json | null
+          before_state: Json | null
+          entity_id: string | null
+          entity_type: string | null
+          id: string | null
+          ip_address: string | null
+          occurred_at: string | null
+          organization_id: string | null
+          prev_hash: string | null
+          row_hash: string | null
+          user_agent: string | null
+          user_id: string | null
+        }
+        Insert: {
+          action?: string | null
+          after_state?: Json | null
+          before_state?: Json | null
+          entity_id?: string | null
+          entity_type?: string | null
+          id?: string | null
+          ip_address?: never
+          occurred_at?: string | null
+          organization_id?: string | null
+          prev_hash?: string | null
+          row_hash?: string | null
+          user_agent?: string | null
+          user_id?: string | null
+        }
+        Update: {
+          action?: string | null
+          after_state?: Json | null
+          before_state?: Json | null
+          entity_id?: string | null
+          entity_type?: string | null
+          id?: string | null
+          ip_address?: never
+          occurred_at?: string | null
+          organization_id?: string | null
+          prev_hash?: string | null
+          row_hash?: string | null
+          user_agent?: string | null
+          user_id?: string | null
+        }
+        Relationships: []
+      }
     }
     Functions: {
       calc_required_approval_level: {

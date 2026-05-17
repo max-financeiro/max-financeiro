@@ -23,6 +23,10 @@ const SECTIONS: Section[] = [
       { href: '/cadastros/contas-bancarias', label: 'Contas bancárias' },
     ],
   },
+  {
+    title: 'Governança',
+    items: [{ href: '/auditoria', label: 'Auditoria' }],
+  },
 ];
 
 export function Sidebar() {
