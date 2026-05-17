@@ -84,6 +84,7 @@ function InviteForm({
         expiresAt={state.expiresAt}
         email={email}
         supplierLegalName={supplierLegalName}
+        magicLink={state.magicLink}
       />
     );
   }
@@ -128,61 +129,109 @@ function CodeCard({
   expiresAt,
   email,
   supplierLegalName,
+  magicLink,
 }: {
   code: string;
   expiresAt: string;
   email: string;
   supplierLegalName: string;
+  magicLink: string | null;
 }) {
-  const [copied, setCopied] = useState(false);
+  const [copiedCode, setCopiedCode] = useState(false);
+  const [copiedLink, setCopiedLink] = useState(false);
+  const [copiedMsg, setCopiedMsg] = useState(false);
   const expires = new Date(expiresAt).toLocaleString('pt-BR');
 
-  const copy = async () => {
-    await navigator.clipboard.writeText(code);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
+  const copy = async (text: string, setter: (v: boolean) => void) => {
+    await navigator.clipboard.writeText(text);
+    setter(true);
+    setTimeout(() => setter(false), 2000);
   };
 
+  const emailMessage = `Olá, ${supplierLegalName},
+
+A Maxfem disponibilizou um portal pra você enviar suas notas fiscais e acompanhar pagamentos.
+
+1) Clique aqui pra entrar (link único, expira em 1h):
+${magicLink ?? 'https://www.financeiromaxfem.com.br/portal/login'}
+
+2) Depois insira o código de 8 dígitos:
+${code}
+
+(Código válido até ${expires})
+
+Qualquer dúvida, responda este email.
+
+Financeiro Maxfem`;
+
   return (
-    <div className="bg-amber-50 border border-amber-200 rounded p-4 space-y-3">
+    <div className="bg-amber-50 border border-amber-200 rounded p-4 space-y-4">
       <div>
         <p className="text-sm font-medium text-amber-900">
           Convite gerado. <strong>Copie agora</strong> — o código não pode ser visto de novo.
         </p>
         <p className="text-xs text-amber-800 mt-1">
           Envie pro fornecedor (<code className="font-mono">{email}</code>) por email ou
-          WhatsApp. Validade até {expires}.
+          WhatsApp.
         </p>
       </div>
 
-      <div className="flex items-center gap-3">
-        <code className="bg-white border border-amber-300 rounded px-4 py-2 text-2xl font-mono tracking-widest text-maxfem-ink select-all">
-          {code}
-        </code>
-        <button onClick={copy} type="button" className="btn-secondary text-xs">
-          {copied ? 'Copiado!' : 'Copiar'}
-        </button>
+      <div>
+        <p className="text-xs font-medium text-neutral-700 mb-1">
+          Código de 8 dígitos (válido até {expires})
+        </p>
+        <div className="flex items-center gap-3">
+          <code className="bg-white border border-amber-300 rounded px-4 py-2 text-2xl font-mono tracking-widest text-maxfem-ink select-all">
+            {code}
+          </code>
+          <button
+            onClick={() => copy(code, setCopiedCode)}
+            type="button"
+            className="btn-secondary text-xs"
+          >
+            {copiedCode ? 'Copiado!' : 'Copiar'}
+          </button>
+        </div>
       </div>
 
-      <details className="text-xs text-neutral-700">
-        <summary className="cursor-pointer text-amber-900 font-medium">
-          Modelo de email pra enviar manualmente
-        </summary>
-        <pre className="bg-white border border-neutral-200 rounded p-3 mt-2 whitespace-pre-wrap font-sans">
-{`Olá, ${supplierLegalName},
+      {magicLink && (
+        <div>
+          <p className="text-xs font-medium text-neutral-700 mb-1">
+            Link mágico (sem precisar passar pelo /portal/login)
+          </p>
+          <div className="flex items-center gap-2">
+            <code className="bg-white border border-amber-300 rounded px-3 py-2 text-xs font-mono text-neutral-700 truncate flex-1 select-all">
+              {magicLink}
+            </code>
+            <button
+              onClick={() => copy(magicLink, setCopiedLink)}
+              type="button"
+              className="btn-secondary text-xs shrink-0"
+            >
+              {copiedLink ? 'Copiado!' : 'Copiar'}
+            </button>
+          </div>
+          <p className="text-xs text-neutral-500 mt-1">
+            Uso único; expira em 1h.
+          </p>
+        </div>
+      )}
 
-A Maxfem disponibilizou um portal pra você enviar suas notas fiscais e acompanhar pagamentos.
-
-Acesse: https://www.financeiromaxfem.com.br/portal/aceitar-convite
-Código de 8 dígitos: ${code}
-
-(Válido até ${expires})
-
-Qualquer dúvida, responda este email.
-
-Financeiro Maxfem`}
-        </pre>
-      </details>
+      <div>
+        <p className="text-xs font-medium text-neutral-700 mb-1">Mensagem pronta pra enviar</p>
+        <div className="relative">
+          <pre className="bg-white border border-neutral-200 rounded p-3 text-xs whitespace-pre-wrap font-sans pr-20">
+{emailMessage}
+          </pre>
+          <button
+            onClick={() => copy(emailMessage, setCopiedMsg)}
+            type="button"
+            className="btn-secondary text-xs absolute top-2 right-2"
+          >
+            {copiedMsg ? 'Copiada!' : 'Copiar tudo'}
+          </button>
+        </div>
+      </div>
     </div>
   );
 }

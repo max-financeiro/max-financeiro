@@ -2,9 +2,10 @@
 
 import { z } from 'zod';
 import { revalidatePath } from 'next/cache';
+import { headers } from 'next/headers';
 import { createClient } from '@/lib/supabase/server';
-// SERVICE_ROLE: pré-cria auth.user no convite pra magic link ser magic link
-// (não signup confirmation, que tem template/URL diferentes no Supabase).
+// SERVICE_ROLE: cria auth.user + gera magic link server-side (não passa
+// pelo SMTP rate-limited do Supabase). Admin copia e envia manualmente.
 // Whitelist de role já é validada via RPC create_supplier_invitation no DB.
 // eslint-disable-next-line no-restricted-imports
 import { getAdminClient } from '@/lib/supabase/admin';
@@ -113,7 +114,7 @@ const InviteSchema = z.object({
 
 export type InviteState =
   | { ok: false; error: string; fieldErrors?: Record<string, string> }
-  | { ok: true; code: string; expiresAt: string }
+  | { ok: true; code: string; expiresAt: string; magicLink: string | null }
   | null;
 
 export async function inviteSupplierAction(
@@ -146,23 +147,43 @@ export async function inviteSupplierAction(
   const row = Array.isArray(data) ? data[0] : data;
   if (!row?.code) return { ok: false, error: 'Resposta inválida da RPC' };
 
-  // Pré-cria auth.user já confirmado (email_confirm=true) pra signInWithOtp
-  // achar usuário existente e mandar MAGIC LINK em vez de signup confirmation.
-  // Se já existir, ignora o erro (idempotente).
+  // Pré-cria auth.user já confirmado (email_confirm=true). Se já existir,
+  // ignora erro (idempotente).
+  const admin = getAdminClient();
+  const emailNorm = parsed.data.email.toLowerCase().trim();
   try {
-    const admin = getAdminClient();
-    const emailNorm = parsed.data.email.toLowerCase().trim();
     await admin.auth.admin.createUser({
       email: emailNorm,
       email_confirm: true,
       user_metadata: { invited_as: 'supplier', supplier_id: parsed.data.supplier_id },
     });
   } catch {
-    // Email já cadastrado é OK — apenas re-aproveitamos
+    // Email já cadastrado é OK
+  }
+
+  // Gera magic link server-side (sem passar pelo SMTP do Supabase, sem rate
+  // limit). Admin copia e envia manualmente pro fornecedor por email/WhatsApp.
+  let magicLink: string | null = null;
+  try {
+    const h = await headers();
+    const origin =
+      h.get('origin') ??
+      `https://${h.get('x-forwarded-host') ?? h.get('host') ?? 'www.financeiromaxfem.com.br'}`;
+    const redirectTo = `${origin}/auth/callback?next=${encodeURIComponent('/portal/aceitar-convite')}`;
+
+    const { data: linkData } = await admin.auth.admin.generateLink({
+      type: 'magiclink',
+      email: emailNorm,
+      options: { redirectTo },
+    });
+    magicLink = linkData?.properties?.action_link ?? null;
+  } catch {
+    // generateLink falhou — admin pode usar fluxo padrão /portal/login
+    magicLink = null;
   }
 
   revalidatePath(`/cadastros/fornecedores/${parsed.data.supplier_id}`);
-  return { ok: true, code: row.code, expiresAt: row.expires_at };
+  return { ok: true, code: row.code, expiresAt: row.expires_at, magicLink };
 }
 
 const RevokeSchema = z.object({
