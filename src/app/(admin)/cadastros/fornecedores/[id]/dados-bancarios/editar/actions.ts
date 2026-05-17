@@ -71,18 +71,26 @@ export async function updateBankDetailsAction(
   _prev: UpdateBankState,
   formData: FormData,
 ): Promise<UpdateBankState> {
+  // Campos opcionais que não estão no DOM (ex: TED ocultado quando PIX
+  // selecionado) retornam null em formData.get(). Zod rejeita null nas
+  // .optional().or(z.literal(''))  → "Invalid input". Coerção pra string:
+  const g = (k: string): string => {
+    const v = formData.get(k);
+    return typeof v === 'string' ? v : '';
+  };
+
   const raw = {
-    supplier_id: formData.get('supplier_id'),
-    pix_key_type: formData.get('pix_key_type'),
-    pix_key: formData.get('pix_key'),
-    bank_code: formData.get('bank_code'),
-    agency: formData.get('agency'),
-    account_number: formData.get('account_number'),
-    account_digit: formData.get('account_digit'),
-    account_holder_name: formData.get('account_holder_name'),
-    account_holder_doc: formData.get('account_holder_doc'),
-    reason: formData.get('reason'),
-    confirm: formData.get('confirm'),
+    supplier_id: g('supplier_id'),
+    pix_key_type: g('pix_key_type'),
+    pix_key: g('pix_key'),
+    bank_code: g('bank_code'),
+    agency: g('agency'),
+    account_number: g('account_number'),
+    account_digit: g('account_digit'),
+    account_holder_name: g('account_holder_name'),
+    account_holder_doc: g('account_holder_doc'),
+    reason: g('reason'),
+    confirm: g('confirm'),
   };
 
   const values = pickValues(formData);
