@@ -77,28 +77,51 @@ export default async function BlingIntegrationPage({
         <div className="bg-white rounded-lg border border-neutral-200 divide-y">
           {(orgs ?? []).map((org) => {
             const status = connectedMap.get(org.id);
+            const connected = Boolean(status?.active);
             return (
               <div key={org.id} className="p-4 flex items-start justify-between gap-4">
-                <div>
-                  <p className="font-medium text-neutral-900">{org.trade_name || org.legal_name}</p>
-                  <p className="text-xs text-neutral-500 font-mono">{org.cnpj}</p>
-                  {status?.active ? (
-                    <p className="text-xs text-emerald-700 mt-1">
-                      Conectado em {status.connected_at && new Date(status.connected_at).toLocaleString('pt-BR')}
-                      {status.last_refresh_at && (
-                        <> · refresh: {new Date(status.last_refresh_at).toLocaleString('pt-BR')}</>
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center gap-3 flex-wrap">
+                    <p className="font-medium text-neutral-900">
+                      {org.trade_name || org.legal_name}
+                    </p>
+                    {connected ? (
+                      <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-emerald-100 text-emerald-800 border border-emerald-200">
+                        <span className="w-2 h-2 rounded-full bg-emerald-500" />
+                        Conectado
+                      </span>
+                    ) : (
+                      <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-neutral-100 text-neutral-600 border border-neutral-200">
+                        <span className="w-2 h-2 rounded-full bg-neutral-400" />
+                        Não conectado
+                      </span>
+                    )}
+                  </div>
+                  <p className="text-xs text-neutral-500 font-mono mt-1">{org.cnpj}</p>
+                  {connected && (
+                    <p className="text-xs text-neutral-500 mt-1">
+                      Conectado em{' '}
+                      {status?.connected_at &&
+                        new Date(status.connected_at).toLocaleString('pt-BR')}
+                      {status?.last_refresh_at && (
+                        <>
+                          {' '}
+                          · último refresh:{' '}
+                          {new Date(status.last_refresh_at).toLocaleString('pt-BR')}
+                        </>
                       )}
                     </p>
-                  ) : (
-                    <p className="text-xs text-neutral-500 mt-1">Não conectado</p>
                   )}
                 </div>
-                <details className="text-sm">
-                  <summary className="cursor-pointer text-pink-600 hover:underline">
-                    {status?.active ? 'Reconectar' : 'Conectar'}
+                <details className="text-sm shrink-0">
+                  <summary className="cursor-pointer text-pink-600 hover:underline list-none">
+                    {connected ? 'Reconectar' : 'Conectar'}
                   </summary>
                   <div className="mt-3 w-[420px]">
-                    <ConnectBlingForm organizationId={org.id} organizationName={org.trade_name || org.legal_name} />
+                    <ConnectBlingForm
+                      organizationId={org.id}
+                      organizationName={org.trade_name || org.legal_name}
+                    />
                   </div>
                 </details>
               </div>
