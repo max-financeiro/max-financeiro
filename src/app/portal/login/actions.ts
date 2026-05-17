@@ -4,7 +4,12 @@ import { z } from 'zod';
 import { redirect } from 'next/navigation';
 import { headers } from 'next/headers';
 import { createClient } from '@/lib/supabase/server';
+// SERVICE_ROLE: check_rate_limit muta rate_limit_buckets antes do auth ser estabelecido; precisa bypassar RLS antes do user existir.
+// eslint-disable-next-line no-restricted-imports
+import { getAdminClient } from '@/lib/supabase/admin';
 import { logAuditEvent } from '@/lib/auth/audit';
+
+const MAGIC_LINK_LIMIT_PER_HOUR = 5;
 
 const Schema = z.object({
   email: z.string().email('Email inválido').max(255),
@@ -27,6 +32,21 @@ export async function sendPortalMagicLinkAction(
   }
 
   const supabase = await createClient();
+
+  // Rate limit Maxfem (5 magic links/h por email). Roda via service_role pra
+  // poder mutar rate_limit_buckets sem RLS — a função SECURITY DEFINER já valida.
+  const admin = getAdminClient();
+  const { data: rl } = await admin.rpc('check_rate_limit', {
+    p_bucket_key: `magic_link:${parsed.data.email.toLowerCase()}`,
+    p_limit: MAGIC_LINK_LIMIT_PER_HOUR,
+    p_window_seconds: 3600,
+  });
+  if (rl && (rl as { allowed?: boolean }).allowed === false) {
+    return {
+      ok: false,
+      error: 'Limite de 5 envios/hora atingido. Tente novamente mais tarde.',
+    };
+  }
 
   // Constrói redirectTo absoluto baseado no host atual
   const h = await headers();

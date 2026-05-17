@@ -12,96 +12,6 @@ export type Database = {
   __InternalSupabase: {
     PostgrestVersion: "14.5"
   }
-  audit: {
-    Tables: {
-      audit_log: {
-        Row: {
-          action: string
-          after_state: Json | null
-          before_state: Json | null
-          entity_id: string | null
-          entity_type: string
-          id: string
-          ip_address: unknown
-          occurred_at: string
-          organization_id: string | null
-          prev_hash: string | null
-          row_hash: string
-          session_id: string | null
-          user_agent: string | null
-          user_id: string | null
-        }
-        Insert: {
-          action: string
-          after_state?: Json | null
-          before_state?: Json | null
-          entity_id?: string | null
-          entity_type: string
-          id?: string
-          ip_address?: unknown
-          occurred_at?: string
-          organization_id?: string | null
-          prev_hash?: string | null
-          row_hash: string
-          session_id?: string | null
-          user_agent?: string | null
-          user_id?: string | null
-        }
-        Update: {
-          action?: string
-          after_state?: Json | null
-          before_state?: Json | null
-          entity_id?: string | null
-          entity_type?: string
-          id?: string
-          ip_address?: unknown
-          occurred_at?: string
-          organization_id?: string | null
-          prev_hash?: string | null
-          row_hash?: string
-          session_id?: string | null
-          user_agent?: string | null
-          user_id?: string | null
-        }
-        Relationships: []
-      }
-    }
-    Views: {
-      [_ in never]: never
-    }
-    Functions: {
-      log_event: {
-        Args: {
-          p_action: string
-          p_after_state?: Json
-          p_before_state?: Json
-          p_entity_id?: string
-          p_entity_type: string
-          p_ip_address?: unknown
-          p_organization_id?: string
-          p_user_agent?: string
-        }
-        Returns: string
-      }
-      verify_hash_chain: {
-        Args: never
-        Returns: {
-          chain_intact: boolean
-          first_tamper_at: string
-          first_tamper_id: string
-          tampered_rows: number
-          total_rows: number
-          verified_rows: number
-        }[]
-      }
-    }
-    Enums: {
-      [_ in never]: never
-    }
-    CompositeTypes: {
-      [_ in never]: never
-    }
-  }
   public: {
     Tables: {
       accounts_payable: {
@@ -404,6 +314,7 @@ export type Database = {
       business_partners: {
         Row: {
           address: Json | null
+          bank_details_last_changed_at: string | null
           created_at: string
           created_by: string | null
           default_payment_terms: number | null
@@ -427,6 +338,7 @@ export type Database = {
         }
         Insert: {
           address?: Json | null
+          bank_details_last_changed_at?: string | null
           created_at?: string
           created_by?: string | null
           default_payment_terms?: number | null
@@ -450,6 +362,7 @@ export type Database = {
         }
         Update: {
           address?: Json | null
+          bank_details_last_changed_at?: string | null
           created_at?: string
           created_by?: string | null
           default_payment_terms?: number | null
@@ -739,6 +652,39 @@ export type Database = {
           },
         ]
       }
+      idempotency_keys: {
+        Row: {
+          created_at: string
+          endpoint: string
+          expires_at: string
+          id: string
+          key: string
+          response_body: Json | null
+          response_status: number | null
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          endpoint: string
+          expires_at: string
+          id?: string
+          key: string
+          response_body?: Json | null
+          response_status?: number | null
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          endpoint?: string
+          expires_at?: string
+          id?: string
+          key?: string
+          response_body?: Json | null
+          response_status?: number | null
+          user_id?: string
+        }
+        Relationships: []
+      }
       organizations: {
         Row: {
           address: Json | null
@@ -907,6 +853,33 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      rate_limit_buckets: {
+        Row: {
+          bucket_key: string
+          expires_at: string
+          id: string
+          metadata: Json | null
+          request_count: number
+          window_start: string
+        }
+        Insert: {
+          bucket_key: string
+          expires_at: string
+          id?: string
+          metadata?: Json | null
+          request_count?: number
+          window_start?: string
+        }
+        Update: {
+          bucket_key?: string
+          expires_at?: string
+          id?: string
+          metadata?: Json | null
+          request_count?: number
+          window_start?: string
+        }
+        Relationships: []
       }
       supplier_bank_change_log: {
         Row: {
@@ -1223,9 +1196,41 @@ export type Database = {
       }
     }
     Functions: {
+      accept_supplier_invitation: {
+        Args: { p_code: string }
+        Returns: {
+          legal_name: string
+          supplier_id: string
+        }[]
+      }
       calc_required_approval_level: {
         Args: { p_payable_id: string }
         Returns: string
+      }
+      check_rate_limit: {
+        Args: {
+          p_bucket_key: string
+          p_limit: number
+          p_window_seconds: number
+        }
+        Returns: Json
+      }
+      claim_idempotency_key: {
+        Args: {
+          p_endpoint: string
+          p_key: string
+          p_ttl_seconds?: number
+          p_user_id: string
+        }
+        Returns: Json
+      }
+      create_supplier_invitation: {
+        Args: { p_email: string; p_supplier_id: string }
+        Returns: {
+          code: string
+          expires_at: string
+          invitation_id: string
+        }[]
       }
       current_user_role: { Args: never; Returns: string }
       decrypt_bank_field: { Args: { p_ciphertext: string }; Returns: string }
@@ -1233,8 +1238,20 @@ export type Database = {
       generate_invitation_code: { Args: never; Returns: string }
       hash_bank_field: { Args: { p_plaintext: string }; Returns: string }
       hash_invitation_code: { Args: { p_code: string }; Returns: string }
+      revoke_supplier_invitation: {
+        Args: { p_invitation_id: string }
+        Returns: undefined
+      }
       show_limit: { Args: never; Returns: number }
       show_trgm: { Args: { "": string }; Returns: string[] }
+      store_idempotency_response: {
+        Args: {
+          p_key: string
+          p_response_body: Json
+          p_response_status: number
+        }
+        Returns: undefined
+      }
       update_supplier_bank_details: {
         Args: {
           p_account_digit?: string
@@ -1265,6 +1282,17 @@ export type Database = {
         Returns: boolean
       }
       user_has_role: { Args: { p_roles: string[] }; Returns: boolean }
+      verify_audit_hash_chain: {
+        Args: never
+        Returns: {
+          chain_intact: boolean
+          first_tamper_at: string
+          first_tamper_id: string
+          tampered_rows: number
+          total_rows: number
+          verified_rows: number
+        }[]
+      }
       verify_invitation_code: {
         Args: { p_code: string; p_hash: string }
         Returns: boolean
@@ -1397,10 +1425,8 @@ export type CompositeTypes<
     : never
 
 export const Constants = {
-  audit: {
-    Enums: {},
-  },
   public: {
     Enums: {},
   },
 } as const
+
