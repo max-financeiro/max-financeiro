@@ -1,6 +1,6 @@
 'use client';
 
-import { useActionState, useState } from 'react';
+import { useActionState, useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { updateBankDetailsAction, type UpdateBankState } from './actions';
 
@@ -20,11 +20,36 @@ export function DadosBancariosForm({ supplierId, supplierName }: Props) {
   // Preserva valores digitados quando ação retorna erro (state.values)
   const v = state && !state.ok && state.values ? state.values : {};
   const isError = state && state.ok === false;
+  const isSuccess = state && state.ok === true;
   const fieldErrors = state && state.ok === false ? state.fieldErrors : undefined;
+
+  // Navega após sucesso (substitui o redirect do server action — evita
+  // problema de reset do form sem feedback visual)
+  useEffect(() => {
+    if (!isSuccess || !state || state.ok !== true) return;
+    const t = setTimeout(() => {
+      router.push(`/cadastros/fornecedores/${state.supplierId}?bank_updated=1`);
+    }, 1500);
+    return () => clearTimeout(t);
+  }, [isSuccess, state, router]);
 
   return (
     <form action={formAction} className="space-y-5">
       <input type="hidden" name="supplier_id" value={supplierId} />
+
+      {/* Banner de sucesso */}
+      {isSuccess && (
+        <div
+          className="bg-emerald-50 border-2 border-emerald-300 rounded-lg p-4"
+          role="status"
+          aria-live="polite"
+        >
+          <p className="text-sm font-semibold text-emerald-900">✓ Dados bancários salvos</p>
+          <p className="text-sm text-emerald-800 mt-1">
+            Cooldown de 24h ativo. Redirecionando pro detalhe do fornecedor...
+          </p>
+        </div>
+      )}
 
       {/* Banner de erro global (não-campo) */}
       {isError && !fieldErrors && (

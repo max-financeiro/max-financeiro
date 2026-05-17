@@ -1,7 +1,6 @@
 'use server';
 
 import { z } from 'zod';
-import { redirect } from 'next/navigation';
 import { revalidatePath } from 'next/cache';
 import { headers } from 'next/headers';
 // SERVICE_ROLE necessário: RPC update_supplier_bank_details é GRANT só pra service_role
@@ -233,5 +232,5 @@ export async function updateBankDetailsAction(
   });
 
   revalidatePath(`/cadastros/fornecedores/${parsed.data.supplier_id}`);
-  redirect(`/cadastros/fornecedores/${parsed.data.supplier_id}?bank_updated=1`);
+  return { ok: true, supplierId: parsed.data.supplier_id };
 }
