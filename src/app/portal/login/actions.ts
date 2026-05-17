@@ -38,11 +38,10 @@ export async function sendPortalMagicLinkAction(
   const { error } = await supabase.auth.signInWithOtp({
     email: parsed.data.email,
     options: {
-      // shouldCreateUser=true permite criar conta caso ainda não exista —
-      // o vínculo com business_partner só acontece em accept_supplier_invitation
-      // após o usuário inserir o código de 8 dígitos. Sem código, o user fica
-      // órfão (sem role, sem acesso ao portal — sai pela 'pending' page).
-      shouldCreateUser: true,
+      // shouldCreateUser=false: o auth.user é pré-criado quando admin gera o
+      // convite (action inviteSupplierAction usa service_role + email_confirm).
+      // Se o email não tem convite, signInWithOtp falha — comportamento correto.
+      shouldCreateUser: false,
       emailRedirectTo: redirectTo,
     },
   });

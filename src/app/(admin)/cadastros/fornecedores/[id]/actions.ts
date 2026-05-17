@@ -3,6 +3,11 @@
 import { z } from 'zod';
 import { revalidatePath } from 'next/cache';
 import { createClient } from '@/lib/supabase/server';
+// SERVICE_ROLE: pré-cria auth.user no convite pra magic link ser magic link
+// (não signup confirmation, que tem template/URL diferentes no Supabase).
+// Whitelist de role já é validada via RPC create_supplier_invitation no DB.
+// eslint-disable-next-line no-restricted-imports
+import { getAdminClient } from '@/lib/supabase/admin';
 import { logAuditEvent } from '@/lib/auth/audit';
 
 /**
@@ -140,6 +145,21 @@ export async function inviteSupplierAction(
 
   const row = Array.isArray(data) ? data[0] : data;
   if (!row?.code) return { ok: false, error: 'Resposta inválida da RPC' };
+
+  // Pré-cria auth.user já confirmado (email_confirm=true) pra signInWithOtp
+  // achar usuário existente e mandar MAGIC LINK em vez de signup confirmation.
+  // Se já existir, ignora o erro (idempotente).
+  try {
+    const admin = getAdminClient();
+    const emailNorm = parsed.data.email.toLowerCase().trim();
+    await admin.auth.admin.createUser({
+      email: emailNorm,
+      email_confirm: true,
+      user_metadata: { invited_as: 'supplier', supplier_id: parsed.data.supplier_id },
+    });
+  } catch {
+    // Email já cadastrado é OK — apenas re-aproveitamos
+  }
 
   revalidatePath(`/cadastros/fornecedores/${parsed.data.supplier_id}`);
   return { ok: true, code: row.code, expiresAt: row.expires_at };

@@ -13,11 +13,13 @@ max_rows = 1000
 [auth]
 enabled = true
 site_url = "http://localhost:3000"
+# Domínio real em produção é www.financeiromaxfem.com.br.
+# Site URL + Redirect URLs do projeto remoto devem ser configurados no DASHBOARD
+# Supabase (Auth → URL Configuration) — config.toml só vale pro stack local.
 additional_redirect_urls = [
   "http://localhost:3000/auth/callback",
-  "https://app.financeiromaxfem.com.br/auth/callback",
-  "https://portal.financeiromaxfem.com.br/auth/callback",
-  "https://staging.financeiromaxfem.com.br/auth/callback"
+  "https://www.financeiromaxfem.com.br/auth/callback",
+  "https://financeiromaxfem.com.br/auth/callback"
 ]
 jwt_expiry = 28800  # 8h admin; portal de fornecedor usa refresh shorter via app
 enable_refresh_token_rotation = true
