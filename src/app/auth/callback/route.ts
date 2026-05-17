@@ -26,7 +26,12 @@ export async function GET(request: NextRequest) {
     return NextResponse.redirect(`${origin}/login?error=invalid_code`);
   }
 
-  // Decidir destino pelo estado MFA
+  // Fornecedores (rotas /portal/*) não passam por enforce de TOTP — manda direto.
+  if (next.startsWith('/portal')) {
+    return NextResponse.redirect(`${origin}${next}`);
+  }
+
+  // Decidir destino pelo estado MFA (apenas admins)
   const state = await getMfaState(supabase);
   if (state.kind === 'needs_enrollment') {
     return NextResponse.redirect(`${origin}/auth/2fa/enroll?next=${encodeURIComponent(next)}`);

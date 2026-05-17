@@ -96,3 +96,79 @@ export async function updateSupplierAction(
   revalidatePath('/cadastros/fornecedores');
   return { ok: true };
 }
+
+// ============================================================
+// Convite pro portal do fornecedor
+// ============================================================
+
+const InviteSchema = z.object({
+  supplier_id: z.string().uuid(),
+  email: z.string().email().max(255),
+});
+
+export type InviteState =
+  | { ok: false; error: string; fieldErrors?: Record<string, string> }
+  | { ok: true; code: string; expiresAt: string }
+  | null;
+
+export async function inviteSupplierAction(
+  _prev: InviteState,
+  formData: FormData,
+): Promise<InviteState> {
+  const parsed = InviteSchema.safeParse({
+    supplier_id: formData.get('supplier_id'),
+    email: formData.get('email'),
+  });
+
+  if (!parsed.success) {
+    const fieldErrors: Record<string, string> = {};
+    for (const issue of parsed.error.issues) {
+      const path = issue.path[0]?.toString();
+      if (path) fieldErrors[path] = issue.message;
+    }
+    return { ok: false, error: 'Dados inválidos', fieldErrors };
+  }
+
+  const supabase = await createClient();
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const { data, error } = await (supabase.rpc as any)('create_supplier_invitation', {
+    p_supplier_id: parsed.data.supplier_id,
+    p_email: parsed.data.email,
+  });
+
+  if (error) return { ok: false, error: error.message };
+
+  const row = Array.isArray(data) ? data[0] : data;
+  if (!row?.code) return { ok: false, error: 'Resposta inválida da RPC' };
+
+  revalidatePath(`/cadastros/fornecedores/${parsed.data.supplier_id}`);
+  return { ok: true, code: row.code, expiresAt: row.expires_at };
+}
+
+const RevokeSchema = z.object({
+  invitation_id: z.string().uuid(),
+  supplier_id: z.string().uuid(),
+});
+
+export type RevokeState = { ok: false; error: string } | { ok: true } | null;
+
+export async function revokeInvitationAction(
+  _prev: RevokeState,
+  formData: FormData,
+): Promise<RevokeState> {
+  const parsed = RevokeSchema.safeParse({
+    invitation_id: formData.get('invitation_id'),
+    supplier_id: formData.get('supplier_id'),
+  });
+  if (!parsed.success) return { ok: false, error: 'Dados inválidos' };
+
+  const supabase = await createClient();
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const { error } = await (supabase.rpc as any)('revoke_supplier_invitation', {
+    p_invitation_id: parsed.data.invitation_id,
+  });
+  if (error) return { ok: false, error: error.message };
+
+  revalidatePath(`/cadastros/fornecedores/${parsed.data.supplier_id}`);
+  return { ok: true };
+}

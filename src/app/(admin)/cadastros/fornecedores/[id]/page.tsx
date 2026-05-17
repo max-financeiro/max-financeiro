@@ -2,8 +2,14 @@ import type { Metadata } from 'next';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { createClient } from '@/lib/supabase/server';
+// SERVICE_ROLE: leitura de auth.users (não exposto via PostgREST) pra mostrar
+// qual email do auth está vinculado ao fornecedor. Role admin já validada via
+// middleware e RLS de business_partners; aqui é só lookup de display.
+// eslint-disable-next-line no-restricted-imports
+import { getAdminClient } from '@/lib/supabase/admin';
 import { formatDocument, formatDateTime } from '@/lib/format';
 import { EditarFornecedorForm } from './EditarFornecedorForm';
+import { PortalInviteSection } from './PortalInviteSection';
 
 export const metadata: Metadata = { title: 'Fornecedor' };
 
@@ -20,13 +26,31 @@ export default async function FornecedorDetailPage({
   const { data: supplier } = await supabase
     .from('business_partners')
     .select(
-      'id, document_type, document, legal_name, trade_name, email, phone, address, default_payment_terms, status, uses_supplier_portal, receita_data, receita_synced_at, notes, created_at, updated_at',
+      'id, document_type, document, legal_name, trade_name, email, phone, address, default_payment_terms, status, uses_supplier_portal, supplier_user_id, receita_data, receita_synced_at, notes, created_at, updated_at',
     )
     .eq('id', id)
     .is('deleted_at', null)
     .maybeSingle();
 
   if (!supplier) return notFound();
+
+  // Lookup do email do auth user vinculado (se houver)
+  let linkedUserEmail: string | null = null;
+  if (supplier.supplier_user_id) {
+    const admin = getAdminClient();
+    const { data: authUser } = await admin.auth.admin.getUserById(supplier.supplier_user_id);
+    linkedUserEmail = authUser.user?.email ?? null;
+  }
+
+  // Convite pendente (não usado, não revogado)
+  const { data: pendingInvitation } = await supabase
+    .from('supplier_invitations')
+    .select('id, email, expires_at, created_at')
+    .eq('supplier_id', supplier.id)
+    .is('used_at', null)
+    .order('created_at', { ascending: false })
+    .limit(1)
+    .maybeSingle();
 
   const { data: bankDetails } = await supabase
     .from('supplier_bank_details')
@@ -207,6 +231,15 @@ export default async function FornecedorDetailPage({
           </>
         )}
       </section>
+
+      {/* Portal do fornecedor */}
+      <PortalInviteSection
+        supplierId={supplier.id}
+        supplierLegalName={supplier.legal_name}
+        defaultEmail={supplier.email}
+        linkedUserEmail={linkedUserEmail}
+        pendingInvitation={pendingInvitation}
+      />
 
       {/* Metadata */}
       <footer className="text-xs text-neutral-500 space-y-0.5">

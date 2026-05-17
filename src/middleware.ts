@@ -15,10 +15,20 @@ import { generateNonce, buildCsp, CSP_NONCE_HEADER } from '@/lib/csp/nonce';
 import { updateSession } from '@/lib/supabase/middleware';
 
 // Rotas totalmente públicas (sem qualquer guard)
-const PUBLIC_ROUTES = ['/login', '/api/health', '/legal/privacidade', '/legal/termos'];
+const PUBLIC_ROUTES = [
+  '/login',
+  '/portal/login',
+  '/api/health',
+  '/legal/privacidade',
+  '/legal/termos',
+];
 
 // Rotas de auth: precisam de user logado mas NÃO de AAL2 (são parte do fluxo de chegar lá)
 const AUTH_FLOW_ROUTES = ['/auth/2fa/enroll', '/auth/2fa/verify', '/auth/callback', '/auth/logout'];
+
+// Portal do fornecedor: requer user autenticado mas NÃO requer AAL2 (TOTP).
+// Suppliers usam magic link sem 2FA. Pages /portal/* validam role='supplier' por dentro.
+const PORTAL_ROUTES = ['/portal'];
 
 export const config = {
   matcher: [
@@ -40,16 +50,19 @@ export async function middleware(request: NextRequest) {
 
   const isPublic = isInList(path, PUBLIC_ROUTES);
   const isAuthFlow = isInList(path, AUTH_FLOW_ROUTES);
+  const isPortal = isInList(path, PORTAL_ROUTES);
 
-  // Sem user em rota não-pública → manda pra /login
+  // Sem user em rota não-pública → manda pra /login (ou /portal/login se for /portal/*)
   if (!userId && !isPublic) {
-    const loginUrl = new URL('/login', request.url);
+    const loginPath = isPortal ? '/portal/login' : '/login';
+    const loginUrl = new URL(loginPath, request.url);
     loginUrl.searchParams.set('next', path);
     return NextResponse.redirect(loginUrl);
   }
 
   // User logado mas AAL1 → força fluxo 2FA (pages /auth/2fa/* sabem se é enroll ou verify)
-  if (userId && aal === 'aal1' && !isAuthFlow && !isPublic) {
+  // EXCEÇÃO: rotas do portal — suppliers não fazem 2FA
+  if (userId && aal === 'aal1' && !isAuthFlow && !isPublic && !isPortal) {
     // A page de enroll vai re-redirecionar pra verify se já tem factor enrollado
     const url = new URL('/auth/2fa/enroll', request.url);
     url.searchParams.set('next', path);

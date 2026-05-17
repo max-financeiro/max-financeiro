@@ -6,12 +6,17 @@ export const metadata: Metadata = {
   title: 'Portal do Fornecedor',
 };
 
-export default async function PortalHomePage() {
+export default async function PortalHomePage({
+  searchParams,
+}: {
+  searchParams: Promise<{ welcome?: string }>;
+}) {
+  const { welcome } = await searchParams;
   const supabase = await createClient();
   const {
     data: { user },
   } = await supabase.auth.getUser();
-  if (!user) redirect('/login');
+  if (!user) redirect('/portal/login');
 
   const { data: profile } = await supabase
     .from('user_profiles')
@@ -19,8 +24,12 @@ export default async function PortalHomePage() {
     .eq('user_id', user.id)
     .maybeSingle();
 
-  if (!profile) redirect('/onboarding/pending');
-  if (profile.role !== 'supplier') redirect('/dashboard');
+  // Sem perfil OU perfil não-supplier: convite não foi aceito (ou usuário admin
+  // entrou aqui por engano). Manda pra aceitar-convite.
+  if (!profile || profile.role !== 'supplier') {
+    if (profile && profile.role !== 'supplier') redirect('/dashboard');
+    redirect('/portal/aceitar-convite');
+  }
 
   return (
     <main className="min-h-screen bg-maxfem-cream">
@@ -39,14 +48,21 @@ export default async function PortalHomePage() {
           </div>
         </div>
       </header>
-      <section className="max-w-3xl mx-auto px-4 py-8">
-        <h1 className="font-display text-2xl font-semibold text-maxfem-ink">
-          Bem-vindo, {profile.full_name.split(' ')[0]}
-        </h1>
-        <p className="text-sm text-neutral-600 mt-2">
-          Portal em construção. Em breve você poderá enviar NF, acompanhar pagamentos e atualizar
-          dados bancários por aqui. (Sprint 4)
-        </p>
+      <section className="max-w-3xl mx-auto px-4 py-8 space-y-6">
+        {welcome && (
+          <div className="bg-green-50 border border-green-200 rounded-lg p-4 text-sm text-green-900">
+            <strong>Acesso ativado!</strong> Você agora pode enviar notas fiscais e acompanhar
+            o status dos pagamentos.
+          </div>
+        )}
+        <header>
+          <h1 className="font-display text-2xl font-semibold text-maxfem-ink">
+            Bem-vindo, {profile.full_name.split(' ')[0]}
+          </h1>
+          <p className="text-sm text-neutral-600 mt-2">
+            Envio de NF e dashboard de pagamentos em breve (Sprint 4B).
+          </p>
+        </header>
       </section>
     </main>
   );
