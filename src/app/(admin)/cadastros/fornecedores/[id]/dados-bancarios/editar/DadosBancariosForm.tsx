@@ -16,12 +16,26 @@ export function DadosBancariosForm({ supplierId, supplierName }: Props) {
     null,
   );
   const [method, setMethod] = useState<'pix' | 'ted' | 'both'>('pix');
+  // Controlled state pra campos que não respeitam defaultValue/defaultChecked
+  // entre re-renders (select e checkbox). Sincronizado com state.values na
+  // primeira vez que o action retorna erro (useEffect abaixo).
+  const [pixKeyType, setPixKeyType] = useState('');
+  const [confirmChecked, setConfirmChecked] = useState(false);
 
   // Preserva valores digitados quando ação retorna erro (state.values)
   const v = state && !state.ok && state.values ? state.values : {};
   const isError = state && state.ok === false;
   const isSuccess = state && state.ok === true;
   const fieldErrors = state && state.ok === false ? state.fieldErrors : undefined;
+
+  // Sincroniza estado controlado com values retornados pelo action quando há erro.
+  // (Inputs text/textarea são uncontrolled e usam defaultValue=values.* direto.)
+  useEffect(() => {
+    if (state && !state.ok && state.values) {
+      if (state.values.pix_key_type !== undefined) setPixKeyType(state.values.pix_key_type);
+      // confirm não vem em values (checkbox não envia FormData se desmarcado)
+    }
+  }, [state]);
 
   // Navega após sucesso (substitui o redirect do server action — evita
   // problema de reset do form sem feedback visual)
@@ -111,7 +125,8 @@ export function DadosBancariosForm({ supplierId, supplierName }: Props) {
                 id="pix_key_type"
                 name="pix_key_type"
                 className="input-field"
-                defaultValue={v.pix_key_type ?? ''}
+                value={pixKeyType}
+                onChange={(e) => setPixKeyType(e.target.value)}
               >
                 <option value="">—</option>
                 <option value="cpf">CPF</option>
@@ -269,6 +284,8 @@ export function DadosBancariosForm({ supplierId, supplierName }: Props) {
             type="checkbox"
             name="confirm"
             value="true"
+            checked={confirmChecked}
+            onChange={(e) => setConfirmChecked(e.target.checked)}
             className="mt-0.5 w-4 h-4 rounded border-neutral-300 text-maxfem-pink focus:ring-maxfem-pink"
             aria-invalid={!!fieldErrors?.confirm}
           />
