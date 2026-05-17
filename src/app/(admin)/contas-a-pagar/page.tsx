@@ -97,7 +97,7 @@ export default async function ContasAPagarPage() {
               <tbody className="divide-y divide-neutral-100">
                 {caps.map((c) => (
                   <tr key={c.id} className="hover:bg-neutral-50">
-                    <td className="px-4 py-2.5 font-mono text-xs">{c.reference_number}</td>
+                    <td className="px-4 py-2.5 font-mono text-xs"><Link href={`/contas-a-pagar/${c.id}`} className="text-maxfem-ink hover:text-maxfem-pink">{c.reference_number}</Link></td>
                     <td className="px-4 py-2.5">
                       {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
                       {(c.business_partners as any)?.trade_name ??
