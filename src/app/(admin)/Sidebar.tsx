@@ -31,7 +31,10 @@ const SECTIONS: Section[] = [
   },
   {
     title: 'Integrações',
-    items: [{ href: '/integracoes/bling', label: 'Bling' }],
+    items: [
+      { href: '/integracoes/bling', label: 'Bling' },
+      { href: '/integracoes/gemini', label: 'Gemini · IA' },
+    ],
   },
   {
     title: 'Governança',

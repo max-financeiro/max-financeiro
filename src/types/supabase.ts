@@ -827,6 +827,48 @@ export type Database = {
           },
         ]
       }
+      gemini_credentials: {
+        Row: {
+          active: boolean
+          api_key_encrypted: string
+          connected_at: string
+          connected_by: string | null
+          created_at: string
+          id: string
+          last_validated_at: string | null
+          last_validation_error: string | null
+          last_validation_status: string | null
+          model: string
+          updated_at: string
+        }
+        Insert: {
+          active?: boolean
+          api_key_encrypted: string
+          connected_at?: string
+          connected_by?: string | null
+          created_at?: string
+          id?: string
+          last_validated_at?: string | null
+          last_validation_error?: string | null
+          last_validation_status?: string | null
+          model?: string
+          updated_at?: string
+        }
+        Update: {
+          active?: boolean
+          api_key_encrypted?: string
+          connected_at?: string
+          connected_by?: string | null
+          created_at?: string
+          id?: string
+          last_validated_at?: string | null
+          last_validation_error?: string | null
+          last_validation_status?: string | null
+          model?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       idempotency_keys: {
         Row: {
           created_at: string
@@ -1520,6 +1562,39 @@ export type Database = {
           },
         ]
       }
+      gemini_connection_status: {
+        Row: {
+          active: boolean | null
+          connected_at: string | null
+          connected_by: string | null
+          id: string | null
+          last_validated_at: string | null
+          last_validation_error: string | null
+          last_validation_status: string | null
+          model: string | null
+        }
+        Insert: {
+          active?: boolean | null
+          connected_at?: string | null
+          connected_by?: string | null
+          id?: string | null
+          last_validated_at?: string | null
+          last_validation_error?: string | null
+          last_validation_status?: string | null
+          model?: string | null
+        }
+        Update: {
+          active?: boolean | null
+          connected_at?: string | null
+          connected_by?: string | null
+          id?: string | null
+          last_validated_at?: string | null
+          last_validation_error?: string | null
+          last_validation_status?: string | null
+          model?: string | null
+        }
+        Relationships: []
+      }
     }
     Functions: {
       accept_supplier_invitation: {
@@ -1581,6 +1656,7 @@ export type Database = {
         }[]
       }
       current_user_role: { Args: never; Returns: string }
+      deactivate_gemini_credentials: { Args: never; Returns: undefined }
       decrypt_bank_field: { Args: { p_ciphertext: string }; Returns: string }
       decrypt_bling_credentials: {
         Args: { p_encryption_key: string; p_organization_id: string }
@@ -1590,6 +1666,13 @@ export type Database = {
           client_secret: string
           expires_at: string
           refresh_token: string
+        }[]
+      }
+      decrypt_gemini_credentials: {
+        Args: { p_encryption_key: string }
+        Returns: {
+          api_key: string
+          model: string
         }[]
       }
       encrypt_bank_field: { Args: { p_plaintext: string }; Returns: string }
@@ -1610,6 +1693,17 @@ export type Database = {
           p_scope?: string
         }
         Returns: undefined
+      }
+      save_gemini_credentials: {
+        Args: {
+          p_api_key: string
+          p_connected_by?: string
+          p_encryption_key: string
+          p_model: string
+          p_validation_error?: string
+          p_validation_status: string
+        }
+        Returns: string
       }
       show_limit: { Args: never; Returns: number }
       show_trgm: { Args: { "": string }; Returns: string[] }

@@ -2,13 +2,15 @@
  * POST /api/cap/extract
  *
  * Multipart upload: campo `file` com PDF/XML/JPG/PNG.
- * Roda a extração IA e devolve campos preenchidos. NÃO grava nada
- * no DB nesse momento — a UI confirma e dispara create depois.
- *
- * Auth: sessão admin (master/financial_manager/financial_analyst).
+ * Carrega credencial Gemini ativa (se houver), passa pra extractCapFromDocument.
+ * Devolve campos extraídos sem gravar nada.
  */
 import { createClient } from '@/lib/supabase/server';
+// SERVICE_ROLE: carrega credencial Gemini encrypted via RPC pgcrypto.
+// eslint-disable-next-line no-restricted-imports
+import { getAdminClient } from '@/lib/supabase/admin';
 import { extractCapFromDocument } from '@/lib/cap/extract';
+import type { GeminiModel } from '@/lib/ai/gemini';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 60;
@@ -53,7 +55,6 @@ export async function POST(req: Request) {
   if (!(file instanceof File)) {
     return Response.json({ error: 'Campo `file` ausente' }, { status: 400 });
   }
-
   if (file.size === 0) {
     return Response.json({ error: 'Arquivo vazio' }, { status: 400 });
   }
@@ -62,7 +63,6 @@ export async function POST(req: Request) {
   }
 
   const mimeType = file.type || 'application/octet-stream';
-  // XML às vezes vem com mime vazio ou genérico — confiamos no nome do arquivo
   const looksXml = file.name.toLowerCase().endsWith('.xml');
   const allowed = ALLOWED_MIME.includes(mimeType) || looksXml;
   if (!allowed) {
@@ -72,6 +72,26 @@ export async function POST(req: Request) {
     );
   }
 
+  // Carrega credencial Gemini ativa (se houver) — XML não precisa
+  let gemini: { apiKey: string; model: GeminiModel } | null = null;
+  if (!looksXml) {
+    const encryptionKey = process.env.BANK_ENCRYPTION_KEY;
+    if (encryptionKey) {
+      try {
+        const admin = getAdminClient();
+        const { data: creds } = await admin.rpc('decrypt_gemini_credentials', {
+          p_encryption_key: encryptionKey,
+        });
+        const row = Array.isArray(creds) ? creds[0] : creds;
+        if (row?.api_key) {
+          gemini = { apiKey: row.api_key, model: (row.model ?? 'gemini-flash-latest') as GeminiModel };
+        }
+      } catch (err) {
+        console.warn('[cap-extract] Falha ao carregar credencial Gemini:', err);
+      }
+    }
+  }
+
   const buffer = Buffer.from(await file.arrayBuffer());
 
   try {
@@ -79,11 +99,13 @@ export async function POST(req: Request) {
       buffer,
       mimeType: looksXml ? 'application/xml' : mimeType,
       fileName: file.name,
+      gemini,
     });
 
     return Response.json({
       ok: true,
       extracted,
+      provider: extracted.source,
       file: {
         name: file.name,
         size: file.size,
