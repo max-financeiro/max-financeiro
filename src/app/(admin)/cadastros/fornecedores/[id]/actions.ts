@@ -176,7 +176,12 @@ export async function inviteSupplierAction(
       email: emailNorm,
       options: { redirectTo },
     });
-    magicLink = linkData?.properties?.action_link ?? null;
+    // hashed_token é o token que verifyOtp({type:'magiclink'}) aceita
+    // server-side via cookies SSR (sem implicit flow do verify endpoint).
+    const hashedToken = linkData?.properties?.hashed_token;
+    if (hashedToken) {
+      magicLink = `${origin}/portal/entrar?t=${encodeURIComponent(hashedToken)}&n=${encodeURIComponent('/portal/aceitar-convite')}`;
+    }
   } catch {
     // generateLink falhou — admin pode usar fluxo padrão /portal/login
     magicLink = null;

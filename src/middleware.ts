@@ -20,6 +20,7 @@ import { updateSession } from '@/lib/supabase/middleware';
 const PUBLIC_ROUTES = [
   '/login',
   '/portal/login',
+  '/portal/entrar',
   '/auth/callback',
   '/api/health',
   '/legal/privacidade',

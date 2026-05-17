@@ -199,8 +199,8 @@ Financeiro Maxfem`;
           <p className="text-xs font-medium text-neutral-700 mb-1">
             Link mágico (sem precisar passar pelo /portal/login)
           </p>
-          <div className="flex items-center gap-2">
-            <code className="bg-white border border-amber-300 rounded px-3 py-2 text-xs font-mono text-neutral-700 truncate flex-1 select-all">
+          <div className="flex items-start gap-2">
+            <code className="bg-white border border-amber-300 rounded px-3 py-2 text-xs font-mono text-neutral-700 break-all min-w-0 flex-1 select-all">
               {magicLink}
             </code>
             <button
@@ -220,7 +220,7 @@ Financeiro Maxfem`;
       <div>
         <p className="text-xs font-medium text-neutral-700 mb-1">Mensagem pronta pra enviar</p>
         <div className="relative">
-          <pre className="bg-white border border-neutral-200 rounded p-3 text-xs whitespace-pre-wrap font-sans pr-20">
+          <pre className="bg-white border border-neutral-200 rounded p-3 text-xs whitespace-pre-wrap break-all font-sans pr-20 overflow-hidden">
 {emailMessage}
           </pre>
           <button
