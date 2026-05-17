@@ -54,8 +54,23 @@ export async function sendPortalMagicLinkAction(
   });
 
   if (error) {
-    // Não vazar info — resposta genérica
-    return { ok: false, error: 'Não foi possível enviar o link. Tente novamente em 1 minuto.' };
+    // Mostra mensagem específica conforme o tipo de erro do Supabase
+    const msg = error.message?.toLowerCase() ?? '';
+    if (msg.includes('signup') && msg.includes('disabled')) {
+      return {
+        ok: false,
+        error:
+          'Email não cadastrado no portal. Peça pra Maxfem te enviar um convite.',
+      };
+    }
+    if (msg.includes('rate') || msg.includes('over_email_send_rate')) {
+      return {
+        ok: false,
+        error: 'Muitos pedidos seguidos. Espere 1 minuto e tente de novo.',
+      };
+    }
+    // Diagnóstico bruto pra investigação (esconder em produção depois)
+    return { ok: false, error: `Erro Supabase: ${error.message}` };
   }
 
   redirect(`/portal/login?sent=1&next=${encodeURIComponent(parsed.data.next)}`);
