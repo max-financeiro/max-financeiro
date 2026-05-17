@@ -85,8 +85,7 @@ export default async function AuditoriaPage({
   const toIdx = fromIdx + PAGE_SIZE - 1;
 
   let query = admin
-    .schema('audit')
-    .from('audit_log')
+    .from('audit_log_view')
     .select('id, user_id, organization_id, action, entity_type, entity_id, before_state, after_state, ip_address, prev_hash, row_hash, occurred_at', { count: 'exact' })
     .order('occurred_at', { ascending: false })
     .range(fromIdx, toIdx);
@@ -132,16 +131,14 @@ export default async function AuditoriaPage({
 
   // Lista distinct de actions/entities pra populare filtros
   const { data: distinctActions } = await admin
-    .schema('audit')
-    .from('audit_log')
+    .from('audit_log_view')
     .select('action')
     .order('action')
     .limit(500);
   const uniqueActions = Array.from(new Set((distinctActions ?? []).map((d) => d.action)));
 
   const { data: distinctEntities } = await admin
-    .schema('audit')
-    .from('audit_log')
+    .from('audit_log_view')
     .select('entity_type')
     .order('entity_type')
     .limit(500);

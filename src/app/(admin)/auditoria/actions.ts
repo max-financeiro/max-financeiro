@@ -35,7 +35,7 @@ export async function verifyHashChainAction(): Promise<VerifyResult> {
   }
 
   const admin = getAdminClient();
-  const { data, error } = await admin.schema('audit').rpc('verify_hash_chain');
+  const { data, error } = await admin.rpc('verify_audit_hash_chain');
   if (error) return { ok: false, error: error.message };
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
