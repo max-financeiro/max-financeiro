@@ -17,9 +17,26 @@ export function DadosBancariosForm({ supplierId, supplierName }: Props) {
   );
   const [method, setMethod] = useState<'pix' | 'ted' | 'both'>('pix');
 
+  // Preserva valores digitados quando ação retorna erro (state.values)
+  const v = state && !state.ok && state.values ? state.values : {};
+  const isError = state && state.ok === false;
+  const fieldErrors = state && state.ok === false ? state.fieldErrors : undefined;
+
   return (
     <form action={formAction} className="space-y-5">
       <input type="hidden" name="supplier_id" value={supplierId} />
+
+      {/* Banner de erro global (não-campo) */}
+      {isError && !fieldErrors && (
+        <div
+          className="bg-rose-50 border-2 border-rose-300 rounded-lg p-4"
+          role="alert"
+          aria-live="assertive"
+        >
+          <p className="text-sm font-semibold text-rose-900">Não foi possível salvar</p>
+          <p className="text-sm text-rose-800 mt-1">{state.error}</p>
+        </div>
+      )}
 
       {/* AVISO crítico */}
       <div className="bg-amber-50 border border-amber-300 rounded-lg p-4">
@@ -65,7 +82,12 @@ export function DadosBancariosForm({ supplierId, supplierName }: Props) {
               <label htmlFor="pix_key_type" className="form-label">
                 Tipo
               </label>
-              <select id="pix_key_type" name="pix_key_type" className="input-field">
+              <select
+                id="pix_key_type"
+                name="pix_key_type"
+                className="input-field"
+                defaultValue={v.pix_key_type ?? ''}
+              >
                 <option value="">—</option>
                 <option value="cpf">CPF</option>
                 <option value="cnpj">CNPJ</option>
@@ -84,10 +106,9 @@ export function DadosBancariosForm({ supplierId, supplierName }: Props) {
                 type="text"
                 className="input-field font-mono"
                 placeholder="A chave PIX"
+                defaultValue={v.pix_key ?? ''}
               />
-              {state?.fieldErrors?.pix_key && (
-                <p className="form-error">{state.fieldErrors.pix_key}</p>
-              )}
+              {fieldErrors?.pix_key && <p className="form-error">{fieldErrors.pix_key}</p>}
             </div>
           </div>
         </section>
@@ -108,6 +129,7 @@ export function DadosBancariosForm({ supplierId, supplierName }: Props) {
                 type="text"
                 className="input-field font-mono"
                 placeholder="077"
+                defaultValue={v.bank_code ?? ''}
               />
             </div>
             <div>
@@ -121,6 +143,7 @@ export function DadosBancariosForm({ supplierId, supplierName }: Props) {
                 inputMode="numeric"
                 className="input-field font-mono"
                 placeholder="0001"
+                defaultValue={v.agency ?? ''}
               />
             </div>
             <div>
@@ -134,6 +157,7 @@ export function DadosBancariosForm({ supplierId, supplierName }: Props) {
                 inputMode="numeric"
                 className="input-field font-mono"
                 placeholder="1234567"
+                defaultValue={v.account_number ?? ''}
               />
             </div>
             <div>
@@ -148,6 +172,7 @@ export function DadosBancariosForm({ supplierId, supplierName }: Props) {
                 maxLength={2}
                 className="input-field font-mono"
                 placeholder="0"
+                defaultValue={v.account_digit ?? ''}
               />
             </div>
           </div>
@@ -170,7 +195,7 @@ export function DadosBancariosForm({ supplierId, supplierName }: Props) {
               name="account_holder_name"
               type="text"
               className="input-field"
-              defaultValue={supplierName}
+              defaultValue={v.account_holder_name ?? supplierName}
             />
           </div>
           <div>
@@ -183,9 +208,10 @@ export function DadosBancariosForm({ supplierId, supplierName }: Props) {
               type="text"
               className="input-field font-mono"
               placeholder="Só dígitos"
+              defaultValue={v.account_holder_doc ?? ''}
             />
-            {state?.fieldErrors?.account_holder_doc && (
-              <p className="form-error">{state.fieldErrors.account_holder_doc}</p>
+            {fieldErrors?.account_holder_doc && (
+              <p className="form-error">{fieldErrors.account_holder_doc}</p>
             )}
           </div>
         </div>
@@ -203,8 +229,9 @@ export function DadosBancariosForm({ supplierId, supplierName }: Props) {
           maxLength={500}
           className="input-field"
           placeholder="Ex: Fornecedor migrou de banco. Validado por telefone com gerente em 15/05."
+          defaultValue={v.reason ?? ''}
         />
-        {state?.fieldErrors?.reason && <p className="form-error">{state.fieldErrors.reason}</p>}
+        {fieldErrors?.reason && <p className="form-error">{fieldErrors.reason}</p>}
 
         <label className="flex items-start gap-2 text-sm">
           <input
@@ -218,14 +245,8 @@ export function DadosBancariosForm({ supplierId, supplierName }: Props) {
             Confirmo que estou ciente do <strong>cooldown de 24 horas</strong> antes da mudança valer pra pagamentos, e que o histórico será preservado em log imutável.
           </span>
         </label>
-        {state?.fieldErrors?.confirm && <p className="form-error">{state.fieldErrors.confirm}</p>}
+        {fieldErrors?.confirm && <p className="form-error">{fieldErrors.confirm}</p>}
       </section>
-
-      {state && !state.ok && !state.fieldErrors && (
-        <p className="form-error" role="alert">
-          {state.error}
-        </p>
-      )}
 
       <div className="flex justify-end gap-3">
         <button type="button" onClick={() => router.push(`/cadastros/fornecedores/${supplierId}`)} className="btn-secondary">

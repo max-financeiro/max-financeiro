@@ -15,12 +15,9 @@ import { isValidBRDocument, normalizeDocument } from '@/lib/document';
 /**
  * Update de dados bancários — fluxo crítico anti-fraude.
  *
- * - Exige re-verificação 2FA (step-up auth) — implementação 0.1: confia que
- *   o middleware já garantiu AAL2 pra rota; uma verify-now adicional pode
- *   entrar em sprint posterior.
- * - Chama RPC `update_supplier_bank_details` que faz tudo atômico:
- *   WORM log + soft-delete antigo + insert novo encrypted.
- * - effective_at = NOW + 24h (cooldown).
+ * Instrumentação extensa via console.error pra cada early-return: aparece
+ * em Vercel Function Logs. Em UI, o erro também volta via state pra ser
+ * exibido no formulário.
  */
 
 const UpdateBankSchema = z
@@ -46,8 +43,30 @@ const UpdateBankSchema = z
   );
 
 export type UpdateBankState =
-  | { ok: false; error: string; fieldErrors?: Record<string, string> }
+  | { ok: false; error: string; fieldErrors?: Record<string, string>; values?: Record<string, string> }
+  | { ok: true; supplierId: string }
   | null;
+
+const TAG = '[bank-update]';
+
+function pickValues(formData: FormData): Record<string, string> {
+  const v: Record<string, string> = {};
+  for (const k of [
+    'pix_key_type',
+    'pix_key',
+    'bank_code',
+    'agency',
+    'account_number',
+    'account_digit',
+    'account_holder_name',
+    'account_holder_doc',
+    'reason',
+  ]) {
+    const raw = formData.get(k);
+    if (typeof raw === 'string') v[k] = raw;
+  }
+  return v;
+}
 
 export async function updateBankDetailsAction(
   _prev: UpdateBankState,
@@ -67,6 +86,9 @@ export async function updateBankDetailsAction(
     confirm: formData.get('confirm'),
   };
 
+  const values = pickValues(formData);
+  const supplierIdRaw = typeof raw.supplier_id === 'string' ? raw.supplier_id : '';
+
   const parsed = UpdateBankSchema.safeParse(raw);
   if (!parsed.success) {
     const fieldErrors: Record<string, string> = {};
@@ -74,16 +96,19 @@ export async function updateBankDetailsAction(
       const path = issue.path[0]?.toString();
       if (path) fieldErrors[path] = issue.message;
     }
-    return { ok: false, error: 'Dados inválidos', fieldErrors };
+    console.error(TAG, 'zod_validation_failed', { supplier_id: supplierIdRaw, fieldErrors });
+    return { ok: false, error: 'Dados inválidos', fieldErrors, values };
   }
 
   // Validações específicas: documento do titular (CPF/CNPJ se preenchido)
   const holderDoc = normalizeDocument(parsed.data.account_holder_doc ?? '');
   if (holderDoc && !isValidBRDocument(holderDoc)) {
+    console.error(TAG, 'invalid_holder_doc', { supplier_id: parsed.data.supplier_id });
     return {
       ok: false,
       error: 'CPF/CNPJ do titular inválido',
       fieldErrors: { account_holder_doc: 'Documento inválido' },
+      values,
     };
   }
 
@@ -92,32 +117,50 @@ export async function updateBankDetailsAction(
   const {
     data: { user },
   } = await supabase.auth.getUser();
-  if (!user) return { ok: false, error: 'Sessão expirada' };
+  if (!user) {
+    console.error(TAG, 'no_user_session');
+    return { ok: false, error: 'Sessão expirada — faça login novamente', values };
+  }
 
-  const { data: profile } = await supabase
+  const { data: profile, error: profileErr } = await supabase
     .from('user_profiles')
     .select('role')
     .eq('user_id', user.id)
     .maybeSingle();
-  if (!profile) return { ok: false, error: 'Perfil não encontrado' };
+  if (profileErr || !profile) {
+    console.error(TAG, 'profile_not_found', { user_id: user.id, err: profileErr?.message });
+    return { ok: false, error: 'Perfil não encontrado', values };
+  }
 
   // Só master/manager/analyst podem mudar dados bancários
   if (!['master', 'financial_manager', 'financial_analyst'].includes(profile.role)) {
-    return { ok: false, error: 'Sem permissão' };
+    console.error(TAG, 'role_not_allowed', { role: profile.role });
+    return { ok: false, error: `Role "${profile.role}" sem permissão pra esta operação`, values };
   }
 
   // Verifica supplier visível pelo user
-  const { data: supplier } = await supabase
+  const { data: supplier, error: supErr } = await supabase
     .from('business_partners')
     .select('id, group_id, legal_name')
     .eq('id', parsed.data.supplier_id)
     .maybeSingle();
-  if (!supplier) return { ok: false, error: 'Fornecedor não encontrado' };
+  if (supErr || !supplier) {
+    console.error(TAG, 'supplier_not_visible', {
+      supplier_id: parsed.data.supplier_id,
+      err: supErr?.message,
+    });
+    return { ok: false, error: 'Fornecedor não encontrado ou sem permissão', values };
+  }
 
   // Encryption key
   const encryptionKey = process.env.BANK_ENCRYPTION_KEY;
   if (!encryptionKey) {
-    return { ok: false, error: 'BANK_ENCRYPTION_KEY não configurada' };
+    console.error(TAG, 'missing_BANK_ENCRYPTION_KEY_env');
+    return {
+      ok: false,
+      error: 'BANK_ENCRYPTION_KEY não configurada no servidor. Avise o admin.',
+      values,
+    };
   }
 
   // Headers pra context
@@ -128,9 +171,14 @@ export async function updateBankDetailsAction(
     null;
   const userAgent = headersList.get('user-agent') ?? null;
 
-  // SERVICE_ROLE: a RPC `update_supplier_bank_details` exige service_role
-  // pra mexer no app.encryption_key (set_config) e tabela WORM.
   const adminClient = getAdminClient();
+
+  console.warn(TAG, 'calling_rpc', {
+    supplier_id: parsed.data.supplier_id,
+    has_pix: !!(parsed.data.pix_key_type && parsed.data.pix_key),
+    has_account: !!(parsed.data.bank_code && parsed.data.agency && parsed.data.account_number),
+    role: profile.role,
+  });
 
   const { data, error: rpcError } = await adminClient.rpc('update_supplier_bank_details', {
     p_supplier_id: parsed.data.supplier_id,
@@ -150,10 +198,24 @@ export async function updateBankDetailsAction(
   });
 
   if (rpcError) {
-    return { ok: false, error: `Erro no banco: ${rpcError.message}` };
+    console.error(TAG, 'rpc_failed', {
+      supplier_id: parsed.data.supplier_id,
+      code: rpcError.code,
+      message: rpcError.message,
+      details: rpcError.details,
+      hint: rpcError.hint,
+    });
+    return { ok: false, error: `Erro no banco: ${rpcError.message}`, values };
   }
 
   const result = Array.isArray(data) ? data[0] : data;
+  console.warn(TAG, 'rpc_success', {
+    supplier_id: parsed.data.supplier_id,
+    new_bank_details_id: result?.new_bank_details_id,
+    change_log_id: result?.change_log_id,
+    effective_at: result?.effective_at,
+    changed_to_new_account: result?.changed_to_new_account,
+  });
 
   // Audit log no audit.audit_log (além do WORM específico do banco)
   await logAuditEvent(supabase, {
