@@ -28,6 +28,7 @@
     "prepare": "husky"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.96.0",
     "@supabase/ssr": "^0.10.3",
     "@supabase/supabase-js": "^2.50.0",
     "clsx": "^2.1.1",

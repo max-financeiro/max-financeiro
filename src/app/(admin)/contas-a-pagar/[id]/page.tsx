@@ -4,6 +4,7 @@ import { notFound } from 'next/navigation';
 import { createClient } from '@/lib/supabase/server';
 import { formatBRL, formatDate, formatDateTime, formatDocument } from '@/lib/format';
 import { ActionButtons } from './ActionButtons';
+import { AttachmentsSection } from './AttachmentsSection';
 
 export const metadata: Metadata = { title: 'CAP' };
 
@@ -279,6 +280,12 @@ export default async function CAPDetailPage({
               </p>
             )}
           </section>
+
+          {/* Anexos */}
+          <AttachmentsSection
+            payableId={cap.id}
+            canDelete={isMaster || isManager}
+          />
 
           {/* Histórico de aprovações */}
           <section className="bg-white border border-neutral-200 rounded-lg p-5">

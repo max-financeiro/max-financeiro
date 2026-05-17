@@ -46,16 +46,28 @@ export default async function ContasAPagarPage() {
     <div className="space-y-6">
       <header className="flex items-end justify-between gap-4">
         <div>
-          <h1 className="font-display text-2xl font-semibold text-maxfem-ink">
+          <h1 className="font-display text-heading-lg font-semibold text-ink-900 tracking-tight">
             Contas a pagar
           </h1>
-          <p className="text-sm text-neutral-600 mt-1">
-            Alçada calculada por valor + 7 overrides anti-fraude (RPC calc_required_approval_level).
+          <p className="text-body-sm text-ink-500 mt-1">
+            Alçada calculada por valor + 7 overrides anti-fraude.
           </p>
         </div>
-        <Link href="/contas-a-pagar/nova" className="btn-primary">
-          + Nova CAP
-        </Link>
+        <div className="flex items-center gap-2">
+          <Link
+            href="/contas-a-pagar/importar"
+            className="inline-flex items-center gap-2 px-4 py-2.5 rounded-lg bg-pink-600 text-white font-medium text-body-sm transition-all hover:bg-pink-700 active:scale-[0.98] shadow-sm hover:shadow-md"
+          >
+            <span>✦</span>
+            Importar com IA
+          </Link>
+          <Link
+            href="/contas-a-pagar/nova"
+            className="inline-flex items-center gap-2 px-4 py-2.5 rounded-lg bg-ink-900 text-surface-raised font-medium text-body-sm transition-all hover:bg-ink-700 active:scale-[0.98]"
+          >
+            + Nova CAP
+          </Link>
+        </div>
       </header>
 
       {error && (

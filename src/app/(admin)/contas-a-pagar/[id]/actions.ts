@@ -461,3 +461,160 @@ export async function requestPaymentAction(
     };
   }
 }
+
+// ============================================================
+// Anexos: upload manual + delete (soft)
+// ============================================================
+
+const AttachmentSchema = z.object({
+  payable_id: z.string().uuid(),
+});
+
+export type AttachmentState =
+  | { ok: false; error: string }
+  | { ok: true; message: string }
+  | null;
+
+export async function addAttachmentAction(
+  _prev: AttachmentState,
+  formData: FormData,
+): Promise<AttachmentState> {
+  const parsed = AttachmentSchema.safeParse({ payable_id: formData.get('payable_id') });
+  if (!parsed.success) return { ok: false, error: 'CAP inválida' };
+
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { ok: false, error: 'Sessão expirada' };
+
+  const { data: profile } = await supabase
+    .from('user_profiles')
+    .select('role')
+    .eq('user_id', user.id)
+    .maybeSingle();
+  if (!profile || !['master', 'financial_manager', 'financial_analyst'].includes(profile.role)) {
+    return { ok: false, error: 'Sem permissão' };
+  }
+
+  const file = formData.get('file');
+  if (!(file instanceof File) || file.size === 0) {
+    return { ok: false, error: 'Arquivo obrigatório' };
+  }
+  if (file.size > 10 * 1024 * 1024) {
+    return { ok: false, error: 'Arquivo maior que 10MB' };
+  }
+
+  const admin = getAdminClient();
+
+  // Acha organization_id da CAP
+  const { data: cap } = await admin
+    .from('accounts_payable')
+    .select('id, organization_id')
+    .eq('id', parsed.data.payable_id)
+    .maybeSingle();
+  if (!cap) return { ok: false, error: 'CAP não encontrada' };
+
+  const buffer = Buffer.from(await file.arrayBuffer());
+  const mimeType = file.type || 'application/octet-stream';
+  const safeName = file.name.replace(/[^\w.\-]/g, '_').slice(0, 200);
+  const storagePath = `${cap.organization_id}/${cap.id}/${Date.now()}-${safeName}`;
+
+  const { error: uploadErr } = await admin.storage
+    .from('cap-attachments')
+    .upload(storagePath, buffer, { contentType: mimeType, upsert: false });
+
+  if (uploadErr) {
+    return { ok: false, error: `Falha no upload: ${uploadErr.message}` };
+  }
+
+  const lowerName = file.name.toLowerCase();
+  let kind: 'nfe_xml' | 'nfe_pdf' | 'boleto_pdf' | 'invoice' | 'receipt' | 'other' = 'other';
+  if (mimeType === 'application/xml' || mimeType === 'text/xml' || lowerName.endsWith('.xml')) {
+    kind = 'nfe_xml';
+  } else if (mimeType === 'application/pdf') {
+    if (lowerName.includes('nf') || lowerName.includes('nota')) kind = 'nfe_pdf';
+    else if (lowerName.includes('boleto') || lowerName.includes('cobranca')) kind = 'boleto_pdf';
+    else if (lowerName.includes('recibo')) kind = 'receipt';
+    else kind = 'invoice';
+  }
+
+  const { error: insertErr } = await admin.from('accounts_payable_attachments').insert({
+    accounts_payable_id: cap.id,
+    organization_id: cap.organization_id,
+    storage_path: storagePath,
+    file_name: file.name,
+    mime_type: mimeType,
+    size_bytes: file.size,
+    kind,
+    source: 'manual',
+    uploaded_by: user.id,
+  });
+
+  if (insertErr) {
+    await admin.storage.from('cap-attachments').remove([storagePath]);
+    return { ok: false, error: `Falha ao registrar anexo: ${insertErr.message}` };
+  }
+
+  await logAuditEvent(supabase, {
+    action: 'cap.attachment_added',
+    entityType: 'accounts_payable',
+    entityId: cap.id,
+    afterState: { file_name: file.name, kind },
+    organizationId: cap.organization_id,
+  });
+
+  revalidatePath(`/contas-a-pagar/${cap.id}`);
+  return { ok: true, message: 'Anexo adicionado.' };
+}
+
+export async function deleteAttachmentAction(
+  _prev: AttachmentState,
+  formData: FormData,
+): Promise<AttachmentState> {
+  const attId = formData.get('attachment_id');
+  if (typeof attId !== 'string') return { ok: false, error: 'ID inválido' };
+
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { ok: false, error: 'Sessão expirada' };
+
+  const { data: profile } = await supabase
+    .from('user_profiles')
+    .select('role')
+    .eq('user_id', user.id)
+    .maybeSingle();
+  if (!profile || !['master', 'financial_manager'].includes(profile.role)) {
+    return { ok: false, error: 'Apenas Master/Gestor pode remover anexos' };
+  }
+
+  const admin = getAdminClient();
+  const { data: att } = await admin
+    .from('accounts_payable_attachments')
+    .select('id, accounts_payable_id, storage_path, file_name, organization_id')
+    .eq('id', attId)
+    .is('deleted_at', null)
+    .maybeSingle();
+  if (!att) return { ok: false, error: 'Anexo não encontrado' };
+
+  await admin
+    .from('accounts_payable_attachments')
+    .update({ deleted_at: new Date().toISOString() })
+    .eq('id', att.id);
+
+  // Storage: também apaga
+  await admin.storage.from('cap-attachments').remove([att.storage_path]);
+
+  await logAuditEvent(supabase, {
+    action: 'cap.attachment_removed',
+    entityType: 'accounts_payable',
+    entityId: att.accounts_payable_id,
+    afterState: { file_name: att.file_name },
+    organizationId: att.organization_id,
+  });
+
+  revalidatePath(`/contas-a-pagar/${att.accounts_payable_id}`);
+  return { ok: true, message: 'Anexo removido.' };
+}

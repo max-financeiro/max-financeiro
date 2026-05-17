@@ -158,6 +158,69 @@ export type Database = {
           },
         ]
       }
+      accounts_payable_attachments: {
+        Row: {
+          accounts_payable_id: string
+          ai_extraction: Json | null
+          deleted_at: string | null
+          file_name: string
+          id: string
+          kind: string
+          mime_type: string
+          organization_id: string
+          size_bytes: number
+          source: string
+          storage_path: string
+          uploaded_at: string
+          uploaded_by: string | null
+        }
+        Insert: {
+          accounts_payable_id: string
+          ai_extraction?: Json | null
+          deleted_at?: string | null
+          file_name: string
+          id?: string
+          kind?: string
+          mime_type: string
+          organization_id: string
+          size_bytes: number
+          source?: string
+          storage_path: string
+          uploaded_at?: string
+          uploaded_by?: string | null
+        }
+        Update: {
+          accounts_payable_id?: string
+          ai_extraction?: Json | null
+          deleted_at?: string | null
+          file_name?: string
+          id?: string
+          kind?: string
+          mime_type?: string
+          organization_id?: string
+          size_bytes?: number
+          source?: string
+          storage_path?: string
+          uploaded_at?: string
+          uploaded_by?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "accounts_payable_attachments_accounts_payable_id_fkey"
+            columns: ["accounts_payable_id"]
+            isOneToOne: false
+            referencedRelation: "accounts_payable"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "accounts_payable_attachments_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       approval_overrides: {
         Row: {
           created_at: string
