@@ -18,7 +18,9 @@ const securityHeaders = [
 
 const fallbackCsp = [
   "default-src 'self'",
-  "script-src 'self' 'strict-dynamic' https://va.vercel-scripts.com https://browser.sentry-cdn.com",
+  // 'unsafe-inline' temporário enquanto coordenação nonce ↔ Next 15 não está implementada.
+  // Ver comentário em src/lib/csp/nonce.ts pro plano de re-tightening em Sprint 3+.
+  "script-src 'self' 'unsafe-inline' https://va.vercel-scripts.com https://browser.sentry-cdn.com",
   "style-src 'self' 'unsafe-inline'",
   "img-src 'self' data: blob: https://*.supabase.co",
   "font-src 'self' data:",

@@ -16,16 +16,31 @@ export function generateNonce(): string {
 }
 
 /**
- * Monta a string CSP com o nonce gerado nesta request.
+ * Monta a string CSP.
  *
- * Mudanças aqui também precisam ir pro next.config.ts (header estático
- * pra páginas que não passam pelo middleware — ex.: static export).
+ * Sprint 1/2: usamos 'unsafe-inline' em script-src porque Next.js 15 +
+ * React 19 emite scripts inline (hydration data) que precisariam de nonce
+ * sincronizado pra serem permitidos. Coordenar nonce middleware → Next.js
+ * é frágil (Next.js espera header `x-nonce`; valor precisa fluir pra
+ * cada <script> emitido). Sem isso, `strict-dynamic` bloqueia silenciosa-
+ * mente as Server Actions, que falham sem mensagem visível.
+ *
+ * Trade-off conhecido: 'unsafe-inline' enfraquece defesa contra XSS injetando
+ * <script>. Mitigado por:
+ *   - X-Frame-Options DENY (anti clickjacking)
+ *   - Sem renderização de HTML user-input cru (React encoding por padrão)
+ *   - object-src 'none' (anti Flash/plugin XSS)
+ *   - frame-ancestors 'none'
+ *   - HSTS preload
+ *
+ * Sprint 3+: reabilitar nonce de verdade seguindo o padrão Next.js (header
+ * `x-nonce` em middleware + headers().get('x-nonce') no app), e voltar pra
+ * strict-dynamic sem unsafe-inline.
  */
-export function buildCsp(nonce: string, isDev: boolean): string {
-  // Em dev, Next.js precisa de eval pra HMR. Em prod, removido.
+export function buildCsp(_nonce: string, isDev: boolean): string {
   const scriptSrc = isDev
-    ? `'self' 'nonce-${nonce}' 'strict-dynamic' 'unsafe-eval' https://va.vercel-scripts.com https://browser.sentry-cdn.com`
-    : `'self' 'nonce-${nonce}' 'strict-dynamic' https://va.vercel-scripts.com https://browser.sentry-cdn.com`;
+    ? `'self' 'unsafe-inline' 'unsafe-eval' https://va.vercel-scripts.com https://browser.sentry-cdn.com`
+    : `'self' 'unsafe-inline' https://va.vercel-scripts.com https://browser.sentry-cdn.com`;
 
   const csp = [
     `default-src 'self'`,
