@@ -248,29 +248,37 @@ export function DadosBancariosForm({ supplierId, supplierName }: Props) {
         <textarea
           id="reason"
           name="reason"
-          required
           rows={3}
-          minLength={5}
           maxLength={500}
           className="input-field"
           placeholder="Ex: Fornecedor migrou de banco. Validado por telefone com gerente em 15/05."
           defaultValue={v.reason ?? ''}
+          aria-invalid={!!fieldErrors?.reason}
         />
         {fieldErrors?.reason && <p className="form-error">{fieldErrors.reason}</p>}
 
-        <label className="flex items-start gap-2 text-sm">
+        <label
+          className={[
+            'flex items-start gap-2 text-sm p-2 rounded',
+            fieldErrors?.confirm ? 'bg-rose-50 border border-rose-300' : '',
+          ]
+            .filter(Boolean)
+            .join(' ')}
+        >
           <input
             type="checkbox"
             name="confirm"
             value="true"
-            required
             className="mt-0.5 w-4 h-4 rounded border-neutral-300 text-maxfem-pink focus:ring-maxfem-pink"
+            aria-invalid={!!fieldErrors?.confirm}
           />
           <span>
             Confirmo que estou ciente do <strong>cooldown de 24 horas</strong> antes da mudança valer pra pagamentos, e que o histórico será preservado em log imutável.
           </span>
         </label>
-        {fieldErrors?.confirm && <p className="form-error">{fieldErrors.confirm}</p>}
+        {fieldErrors?.confirm && (
+          <p className="form-error font-semibold">{fieldErrors.confirm}</p>
+        )}
       </section>
 
       <div className="flex justify-end gap-3">
