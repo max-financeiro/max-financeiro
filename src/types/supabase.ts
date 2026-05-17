@@ -311,6 +311,118 @@ export type Database = {
           },
         ]
       }
+      bling_credentials: {
+        Row: {
+          access_token_encrypted: string | null
+          active: boolean
+          client_id: string
+          client_secret_encrypted: string
+          connected_at: string | null
+          connected_by: string | null
+          created_at: string
+          expires_at: string | null
+          id: string
+          last_refresh_at: string | null
+          organization_id: string
+          refresh_locked_until: string | null
+          refresh_token_encrypted: string | null
+          scope: string | null
+          updated_at: string
+        }
+        Insert: {
+          access_token_encrypted?: string | null
+          active?: boolean
+          client_id: string
+          client_secret_encrypted: string
+          connected_at?: string | null
+          connected_by?: string | null
+          created_at?: string
+          expires_at?: string | null
+          id?: string
+          last_refresh_at?: string | null
+          organization_id: string
+          refresh_locked_until?: string | null
+          refresh_token_encrypted?: string | null
+          scope?: string | null
+          updated_at?: string
+        }
+        Update: {
+          access_token_encrypted?: string | null
+          active?: boolean
+          client_id?: string
+          client_secret_encrypted?: string
+          connected_at?: string | null
+          connected_by?: string | null
+          created_at?: string
+          expires_at?: string | null
+          id?: string
+          last_refresh_at?: string | null
+          organization_id?: string
+          refresh_locked_until?: string | null
+          refresh_token_encrypted?: string | null
+          scope?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "bling_credentials_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: true
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      bling_sync_queue: {
+        Row: {
+          completed_at: string | null
+          created_at: string
+          cursor: string | null
+          error_message: string | null
+          id: string
+          organization_id: string
+          records_synced: number
+          started_at: string | null
+          status: string
+          sync_type: string
+          triggered_by: string
+        }
+        Insert: {
+          completed_at?: string | null
+          created_at?: string
+          cursor?: string | null
+          error_message?: string | null
+          id?: string
+          organization_id: string
+          records_synced?: number
+          started_at?: string | null
+          status?: string
+          sync_type: string
+          triggered_by?: string
+        }
+        Update: {
+          completed_at?: string | null
+          created_at?: string
+          cursor?: string | null
+          error_message?: string | null
+          id?: string
+          organization_id?: string
+          records_synced?: number
+          started_at?: string | null
+          status?: string
+          sync_type?: string
+          triggered_by?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "bling_sync_queue_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       business_partners: {
         Row: {
           address: Json | null
@@ -854,6 +966,74 @@ export type Database = {
           },
         ]
       }
+      products: {
+        Row: {
+          active: boolean
+          bling_data: Json | null
+          bling_id: string | null
+          bling_synced_at: string | null
+          cost: number | null
+          created_at: string
+          deleted_at: string | null
+          description: string | null
+          gtin: string | null
+          id: string
+          name: string
+          ncm: string | null
+          organization_id: string
+          price: number | null
+          sku: string
+          unit: string | null
+          updated_at: string
+        }
+        Insert: {
+          active?: boolean
+          bling_data?: Json | null
+          bling_id?: string | null
+          bling_synced_at?: string | null
+          cost?: number | null
+          created_at?: string
+          deleted_at?: string | null
+          description?: string | null
+          gtin?: string | null
+          id?: string
+          name: string
+          ncm?: string | null
+          organization_id: string
+          price?: number | null
+          sku: string
+          unit?: string | null
+          updated_at?: string
+        }
+        Update: {
+          active?: boolean
+          bling_data?: Json | null
+          bling_id?: string | null
+          bling_synced_at?: string | null
+          cost?: number | null
+          created_at?: string
+          deleted_at?: string | null
+          description?: string | null
+          gtin?: string | null
+          id?: string
+          name?: string
+          ncm?: string | null
+          organization_id?: string
+          price?: number | null
+          sku?: string
+          unit?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "products_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       rate_limit_buckets: {
         Row: {
           bucket_key: string
@@ -880,6 +1060,54 @@ export type Database = {
           window_start?: string
         }
         Relationships: []
+      }
+      stock_balances: {
+        Row: {
+          bling_synced_at: string
+          id: string
+          organization_id: string
+          product_id: string
+          quantity: number
+          updated_at: string
+          warehouse_bling_id: string | null
+          warehouse_name: string
+        }
+        Insert: {
+          bling_synced_at?: string
+          id?: string
+          organization_id: string
+          product_id: string
+          quantity?: number
+          updated_at?: string
+          warehouse_bling_id?: string | null
+          warehouse_name?: string
+        }
+        Update: {
+          bling_synced_at?: string
+          id?: string
+          organization_id?: string
+          product_id?: string
+          quantity?: number
+          updated_at?: string
+          warehouse_bling_id?: string | null
+          warehouse_name?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "stock_balances_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "stock_balances_product_id_fkey"
+            columns: ["product_id"]
+            isOneToOne: false
+            referencedRelation: "products"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       supplier_bank_change_log: {
         Row: {
@@ -1203,6 +1431,14 @@ export type Database = {
           supplier_id: string
         }[]
       }
+      bling_acquire_refresh_lock: {
+        Args: { p_organization_id: string; p_ttl_seconds?: number }
+        Returns: boolean
+      }
+      bling_release_refresh_lock: {
+        Args: { p_organization_id: string }
+        Returns: undefined
+      }
       calc_required_approval_level: {
         Args: { p_payable_id: string }
         Returns: string
@@ -1224,6 +1460,20 @@ export type Database = {
         }
         Returns: Json
       }
+      create_bling_credentials: {
+        Args: {
+          p_access_token: string
+          p_client_id: string
+          p_client_secret: string
+          p_connected_by?: string
+          p_encryption_key: string
+          p_expires_in_seconds: number
+          p_organization_id: string
+          p_refresh_token: string
+          p_scope?: string
+        }
+        Returns: string
+      }
       create_supplier_invitation: {
         Args: { p_email: string; p_supplier_id: string }
         Returns: {
@@ -1234,12 +1484,33 @@ export type Database = {
       }
       current_user_role: { Args: never; Returns: string }
       decrypt_bank_field: { Args: { p_ciphertext: string }; Returns: string }
+      decrypt_bling_credentials: {
+        Args: { p_encryption_key: string; p_organization_id: string }
+        Returns: {
+          access_token: string
+          client_id: string
+          client_secret: string
+          expires_at: string
+          refresh_token: string
+        }[]
+      }
       encrypt_bank_field: { Args: { p_plaintext: string }; Returns: string }
       generate_invitation_code: { Args: never; Returns: string }
       hash_bank_field: { Args: { p_plaintext: string }; Returns: string }
       hash_invitation_code: { Args: { p_code: string }; Returns: string }
       revoke_supplier_invitation: {
         Args: { p_invitation_id: string }
+        Returns: undefined
+      }
+      save_bling_tokens: {
+        Args: {
+          p_access_token: string
+          p_encryption_key: string
+          p_expires_in_seconds: number
+          p_organization_id: string
+          p_refresh_token: string
+          p_scope?: string
+        }
         Returns: undefined
       }
       show_limit: { Args: never; Returns: number }
@@ -1429,4 +1700,3 @@ export const Constants = {
     Enums: {},
   },
 } as const
-

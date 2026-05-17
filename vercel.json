@@ -3,5 +3,11 @@
   "buildCommand": "next build",
   "installCommand": "npm ci",
   "framework": "nextjs",
-  "regions": ["gru1"]
+  "regions": ["gru1"],
+  "crons": [
+    {
+      "path": "/api/bling/sync",
+      "schedule": "*/15 * * * *"
+    }
+  ]
 }

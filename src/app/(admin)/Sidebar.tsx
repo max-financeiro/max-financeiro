@@ -18,10 +18,19 @@ const SECTIONS: Section[] = [
     title: 'Cadastros',
     items: [
       { href: '/cadastros/fornecedores', label: 'Fornecedores' },
+      { href: '/cadastros/produtos', label: 'Produtos' },
       { href: '/cadastros/plano-de-contas', label: 'Plano de contas' },
       { href: '/cadastros/centros-de-custo', label: 'Centros de custo' },
       { href: '/cadastros/contas-bancarias', label: 'Contas bancárias' },
     ],
+  },
+  {
+    title: 'Caixa',
+    items: [{ href: '/caixa/nfs-orfas', label: 'NFs órfãs (Bling)' }],
+  },
+  {
+    title: 'Integrações',
+    items: [{ href: '/integracoes/bling', label: 'Bling' }],
   },
   {
     title: 'Governança',
