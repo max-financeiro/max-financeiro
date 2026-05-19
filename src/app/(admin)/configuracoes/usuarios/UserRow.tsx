@@ -14,6 +14,7 @@ const ROLE_LABEL: Record<string, string> = {
   financial_manager: 'Gestor Financeiro',
   financial_analyst: 'Analista',
   accountant_readonly: 'Contador',
+  buyer: 'Comprador',
 };
 
 const ROLE_TONE: Record<string, Parameters<typeof Badge>[0]['tone']> = {
@@ -21,6 +22,7 @@ const ROLE_TONE: Record<string, Parameters<typeof Badge>[0]['tone']> = {
   financial_manager: 'info',
   financial_analyst: 'neutral',
   accountant_readonly: 'success',
+  buyer: 'warning',
 };
 
 type Profile = {

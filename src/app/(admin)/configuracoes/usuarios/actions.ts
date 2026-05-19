@@ -11,13 +11,13 @@ import { logAuditEvent } from '@/lib/auth/audit';
 const InviteSchema = z.object({
   email: z.string().email().toLowerCase(),
   full_name: z.string().trim().min(3).max(120),
-  role: z.enum(['master', 'financial_manager', 'financial_analyst', 'accountant_readonly']),
+  role: z.enum(['master', 'financial_manager', 'financial_analyst', 'accountant_readonly', 'buyer']),
   org_ids: z.string().optional().or(z.literal('')),
 });
 
 const UpdateRoleSchema = z.object({
   user_id: z.string().uuid(),
-  role: z.enum(['master', 'financial_manager', 'financial_analyst', 'accountant_readonly']),
+  role: z.enum(['master', 'financial_manager', 'financial_analyst', 'accountant_readonly', 'buyer']),
 });
 
 const UpdateAccessSchema = z.object({

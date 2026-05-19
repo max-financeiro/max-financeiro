@@ -26,6 +26,7 @@ export default async function AdminLayout({ children }: { children: React.ReactN
 
   if (!profile) redirect('/onboarding/pending');
   if (profile.role === 'supplier') redirect('/portal');
+  if (profile.role === 'buyer') redirect('/comprador');
 
   return (
     <div className="min-h-screen bg-surface">

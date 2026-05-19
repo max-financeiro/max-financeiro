@@ -25,6 +25,12 @@ const SECTIONS: Section[] = [
     ],
   },
   {
+    title: 'Operação · Produto',
+    items: [
+      { href: '/estoque', label: 'Estoque' },
+    ],
+  },
+  {
     title: 'Cadastros',
     items: [
       { href: '/cadastros/fornecedores', label: 'Fornecedores' },
@@ -55,6 +61,7 @@ const SECTIONS: Section[] = [
     items: [
       { href: '/configuracoes/empresas', label: 'Empresas e filiais' },
       { href: '/configuracoes/usuarios', label: 'Usuários' },
+      { href: '/configuracoes/orcamento', label: 'Orçamento' },
       { href: '/configuracoes/alcadas', label: 'Alçadas' },
       { href: '/configuracoes/perfis', label: 'Perfis e permissões' },
     ],

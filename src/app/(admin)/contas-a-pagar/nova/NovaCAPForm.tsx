@@ -4,6 +4,7 @@ import { useActionState, useState, useEffect, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
 import { createPayableAction, type CreateState } from './actions';
 import { formatBRL } from '@/lib/format';
+import { BudgetAvailabilityWidget } from './BudgetAvailabilityWidget';
 
 type Option = { id: string; label: string; subtitle?: string };
 
@@ -283,6 +284,15 @@ export function NovaCAPForm({ branches, suppliers, costCenters, accounts }: Prop
             </select>
           </div>
         </div>
+
+        {/* Widget de saldo orçamentário */}
+        <BudgetAvailabilityWidget
+          organizationId={organizationId}
+          costCenterId={costCenterId}
+          accountId={accountId}
+          amount={amountNum}
+          competenceDate={competenceDate}
+        />
       </section>
 
       {/* Detalhes */}

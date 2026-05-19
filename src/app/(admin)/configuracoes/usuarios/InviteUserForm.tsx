@@ -7,6 +7,7 @@ import { inviteUserAction, type FormState } from './actions';
 type OrgOption = { id: string; label: string; type: string };
 
 const ROLES = [
+  { value: 'buyer', label: 'Comprador', desc: 'Solicita compras. Vê apenas os próprios pedidos.' },
   { value: 'financial_analyst', label: 'Analista Financeiro', desc: 'Lança CAP, valida e solicita pagamento.' },
   { value: 'financial_manager', label: 'Gestor Financeiro', desc: 'Aprova alçada Tática e Estratégica + Master.' },
   { value: 'accountant_readonly', label: 'Contador', desc: 'Somente leitura + exportações fiscais.' },

@@ -5,6 +5,7 @@ import { createClient } from '@/lib/supabase/server';
 import { formatBRL, formatDate, formatDateTime, formatDocument } from '@/lib/format';
 import { ActionButtons } from './ActionButtons';
 import { AttachmentsSection } from './AttachmentsSection';
+import { CAPTimeline } from './CAPTimeline';
 
 export const metadata: Metadata = { title: 'CAP' };
 
@@ -406,35 +407,21 @@ export default async function CAPDetailPage({
             canCancel={canCancel}
           />
 
-          {/* Timeline */}
-          <section className="bg-white border border-neutral-200 rounded-lg p-4 text-xs text-neutral-600 space-y-1">
-            <p>
-              <strong>Criada:</strong> {formatDateTime(cap.created_at)}
-            </p>
-            {cap.submitted_at && (
-              <p>
-                <strong>Enviada:</strong> {formatDateTime(cap.submitted_at)}
-              </p>
-            )}
-            {cap.approved_at && (
-              <p>
-                <strong>Aprovada:</strong> {formatDateTime(cap.approved_at)}
-              </p>
-            )}
-            {cap.rejected_at && (
-              <p>
-                <strong>Rejeitada:</strong> {formatDateTime(cap.rejected_at)}
-              </p>
-            )}
-            {cap.cancelled_at && (
-              <p>
-                <strong>Cancelada:</strong> {formatDateTime(cap.cancelled_at)}
-              </p>
-            )}
-            <p>
-              <strong>Última atualização:</strong> {formatDateTime(cap.updated_at)}
-            </p>
-          </section>
+          <CAPTimeline
+            status={cap.status}
+            createdAt={cap.created_at}
+            submittedAt={cap.submitted_at}
+            approvedAt={cap.approved_at}
+            rejectedAt={cap.rejected_at}
+            cancelledAt={cap.cancelled_at}
+            amount={cap.amount}
+            amountPaid={cap.amount_paid ?? 0}
+            payments={payments}
+          />
+
+          <p className="text-xs text-neutral-500 px-1">
+            Última atualização: {formatDateTime(cap.updated_at)}
+          </p>
         </div>
       </div>
     </div>
