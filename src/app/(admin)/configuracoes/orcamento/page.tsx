@@ -3,13 +3,18 @@ import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import { createClient } from '@/lib/supabase/server';
 import { formatBRL } from '@/lib/format';
-import { upsertBudgetAction, deleteBudgetAction } from './actions';
+import {
+  upsertBudgetAction,
+  deleteBudgetAction,
+  distributeBudgetEvenlyAction,
+} from './actions';
+import { MonthlyBudgetRow } from './MonthlyBudgetRow';
 
 export const metadata: Metadata = { title: 'Orçamento' };
 
 type Tab = 'cost_center' | 'account';
 
-const MONTHS_LABEL = [
+export const MONTHS_LABEL = [
   'Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun',
   'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez',
 ];
@@ -29,7 +34,6 @@ export default async function OrcamentoPage({
   } = await supabase.auth.getUser();
   if (!user) redirect('/login?next=/configuracoes/orcamento');
 
-  // Pega o(s) grupo(s) acessíveis ao user
   const { data: groups } = await supabase
     .from('organizations')
     .select('id, legal_name, trade_name, type')
@@ -46,17 +50,15 @@ export default async function OrcamentoPage({
     );
   }
 
-  // Dimensões disponíveis (CC ou contas) + orçamento atual + consumo atual
   let dims: { id: string; code: string; name: string }[] = [];
-  let consumption:
-    | {
-        fk_id: string;
-        budgeted: number;
-        committed: number;
-        paid: number;
-        available: number;
-      }[]
-    | null = [];
+  type ConsumptionRow = {
+    fk_id: string;
+    month: number;
+    budgeted: number;
+    committed: number;
+    paid: number;
+  };
+  let consumptionByFkMonth = new Map<string, ConsumptionRow>(); // key = `${fk_id}|${month}`
 
   if (tab === 'cost_center') {
     const { data } = await supabase
@@ -67,14 +69,13 @@ export default async function OrcamentoPage({
       .order('code');
     dims = data ?? [];
 
-    // View nova ainda não regenerada nos types — bypass localizado.
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const { data: cons } = await (supabase as any)
       .from('budget_cost_center_consumption')
-      .select('cost_center_id, budgeted, committed, paid, available')
+      .select('cost_center_id, month, budgeted, committed, paid')
       .eq('group_id', groupId)
       .eq('fiscal_year', year);
-    consumption = aggregateConsumption(cons ?? [], 'cost_center_id');
+    consumptionByFkMonth = buildConsumptionMap(cons ?? [], 'cost_center_id');
   } else {
     const { data } = await supabase
       .from('chart_of_accounts')
@@ -88,41 +89,53 @@ export default async function OrcamentoPage({
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const { data: cons } = await (supabase as any)
       .from('budget_chart_account_consumption')
-      .select('account_id, budgeted, committed, paid, available')
+      .select('account_id, month, budgeted, committed, paid')
       .eq('group_id', groupId)
       .eq('fiscal_year', year);
-    consumption = aggregateConsumption(cons ?? [], 'account_id');
+    consumptionByFkMonth = buildConsumptionMap(cons ?? [], 'account_id');
   }
 
   // Orçamentos atuais (1 linha por dimensão)
   const budgetTable = tab === 'cost_center' ? 'budget_cost_center' : 'budget_chart_account';
   const fkCol = tab === 'cost_center' ? 'cost_center_id' : 'account_id';
-  // Tabelas budget_* não regeneradas nos types ainda — bypass localizado.
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const { data: budgets } = await (supabase as any)
     .from(budgetTable)
-    .select(`id, ${fkCol}, amount_annual, notes`)
+    .select(`id, ${fkCol}, amount_annual, amount_by_month, notes`)
     .eq('group_id', groupId)
     .eq('fiscal_year', year)
     .is('deleted_at', null);
 
-  const budgetByFk = new Map<string, { id: string; amount_annual: number }>(
+  type Budget = {
+    id: string;
+    amount_annual: number;
+    amount_by_month: Record<string, number> | null;
+  };
+  const budgetByFk = new Map<string, Budget>(
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     (budgets ?? []).map((b: any) => [
       b[fkCol] as string,
-      { id: b.id as string, amount_annual: Number(b.amount_annual) },
+      {
+        id: b.id as string,
+        amount_annual: Number(b.amount_annual),
+        amount_by_month: b.amount_by_month as Record<string, number> | null,
+      },
     ]),
   );
-  const consumptionByFk = new Map(consumption.map((c) => [c.fk_id, c]));
 
-  // Totais
-  const totalBudgeted = consumption.reduce((a, c) => a + c.budgeted, 0);
-  const totalCommitted = consumption.reduce((a, c) => a + c.committed, 0);
-  const totalPaid = consumption.reduce((a, c) => a + c.paid, 0);
+  // Totais agregados (ano todo)
+  let totalBudgeted = 0;
+  let totalCommitted = 0;
+  let totalPaid = 0;
+  for (const [, row] of consumptionByFkMonth) {
+    totalBudgeted += Number(row.budgeted ?? 0);
+    totalCommitted += Number(row.committed ?? 0);
+    totalPaid += Number(row.paid ?? 0);
+  }
   const totalAvailable = totalBudgeted - totalCommitted - totalPaid;
 
   return (
-    <div className="space-y-6 max-w-7xl">
+    <div className="space-y-6 max-w-[1400px]">
       <PageHeader tab={tab} year={year} groups={groups ?? []} groupId={groupId} />
 
       {/* KPIs */}
@@ -137,121 +150,120 @@ export default async function OrcamentoPage({
         />
       </div>
 
-      {/* Tabela */}
-      <div className="bg-white border border-neutral-200 rounded-lg overflow-hidden">
+      <div className="bg-white border border-neutral-200 rounded-lg overflow-x-auto">
         <table className="min-w-full text-sm">
-          <thead className="bg-neutral-50 text-xs uppercase text-neutral-500">
+          <thead className="bg-neutral-50 text-[10px] uppercase text-neutral-500 tracking-wider">
             <tr>
-              <th className="px-4 py-2 text-left">Código</th>
-              <th className="px-4 py-2 text-left">{tab === 'cost_center' ? 'Centro de custo' : 'Conta'}</th>
-              <th className="px-4 py-2 text-right">Orçado (ano)</th>
-              <th className="px-4 py-2 text-right">Comprometido</th>
-              <th className="px-4 py-2 text-right">Pago</th>
-              <th className="px-4 py-2 text-right">Disponível</th>
-              <th className="px-4 py-2 text-right">Consumo</th>
-              <th className="px-4 py-2 w-24"></th>
+              <th className="px-3 py-2 text-left sticky left-0 bg-neutral-50">
+                {tab === 'cost_center' ? 'Centro de custo' : 'Conta'}
+              </th>
+              {MONTHS_LABEL.map((m) => (
+                <th key={m} className="px-2 py-2 text-right w-[88px]">
+                  {m}
+                </th>
+              ))}
+              <th className="px-3 py-2 text-right bg-neutral-100">Total</th>
+              <th className="px-3 py-2 text-right">Realizado</th>
+              <th className="px-3 py-2 text-right">Disponível</th>
+              <th className="px-3 py-2 w-32"></th>
             </tr>
           </thead>
           <tbody className="divide-y divide-neutral-100">
             {dims.length === 0 && (
               <tr>
-                <td colSpan={8} className="px-4 py-10 text-center text-neutral-500">
+                <td
+                  colSpan={MONTHS_LABEL.length + 5}
+                  className="px-4 py-10 text-center text-neutral-500"
+                >
                   Nenhum {tab === 'cost_center' ? 'centro de custo' : 'conta analítica'} cadastrado(a).
                 </td>
               </tr>
             )}
             {dims.map((d) => {
               const b = budgetByFk.get(d.id);
-              const c = consumptionByFk.get(d.id);
-              const budgeted = b?.amount_annual ?? 0;
-              const committed = c?.committed ?? 0;
-              const paid = c?.paid ?? 0;
-              const consumed = committed + paid;
-              const available = budgeted - consumed;
-              const pct = budgeted > 0 ? (consumed / budgeted) * 100 : 0;
-              const pctColor = pct > 100 ? 'bg-rose-500' : pct > 80 ? 'bg-amber-400' : 'bg-emerald-500';
+              const monthlyValues: number[] = [];
+              for (let m = 1; m <= 12; m++) {
+                if (b?.amount_by_month) {
+                  monthlyValues.push(Number(b.amount_by_month[String(m)] ?? 0));
+                } else if (b) {
+                  // Rateia 1/12 quando há annual mas não há monthly
+                  monthlyValues.push(Number(b.amount_annual) / 12);
+                } else {
+                  monthlyValues.push(0);
+                }
+              }
+
+              // Realizado e disponível anual (soma 12 meses)
+              let realized = 0;
+              let monthlyBudgetedSum = 0;
+              for (let m = 1; m <= 12; m++) {
+                const r = consumptionByFkMonth.get(`${d.id}|${m}`);
+                realized += Number(r?.committed ?? 0) + Number(r?.paid ?? 0);
+                monthlyBudgetedSum += Number(r?.budgeted ?? 0);
+              }
+              const annualBudgeted = b?.amount_annual ?? monthlyBudgetedSum;
+              const available = annualBudgeted - realized;
 
               return (
-                <tr key={d.id} className="hover:bg-neutral-50">
-                  <td className="px-4 py-2 font-mono text-xs">{d.code}</td>
-                  <td className="px-4 py-2">{d.name}</td>
-                  <td className="px-4 py-2 text-right">
-                    <form action={upsertBudgetAction} className="inline-flex items-center gap-1">
-                      <input type="hidden" name="dimension" value={tab} />
-                      <input type="hidden" name="group_id" value={groupId} />
-                      <input type="hidden" name="fk_id" value={d.id} />
-                      <input type="hidden" name="fiscal_year" value={year} />
-                      {b?.id && <input type="hidden" name="id" value={b.id} />}
-                      <input
-                        type="number"
-                        name="amount_annual"
-                        step="0.01"
-                        min="0"
-                        defaultValue={budgeted || ''}
-                        placeholder="0,00"
-                        className="w-32 text-right font-mono text-xs rounded border border-neutral-300 px-2 py-1 focus:border-pink-500 focus:outline-none"
-                      />
-                      <button
-                        type="submit"
-                        className="text-xs px-2 py-1 rounded bg-maxfem-pink text-white hover:bg-pink-600"
-                        title="Salvar"
-                      >
-                        ✓
-                      </button>
-                    </form>
-                  </td>
-                  <td className="px-4 py-2 text-right font-mono text-xs">{formatBRL(committed)}</td>
-                  <td className="px-4 py-2 text-right font-mono text-xs">{formatBRL(paid)}</td>
-                  <td className={`px-4 py-2 text-right font-mono text-xs ${available < 0 ? 'text-rose-700 font-semibold' : 'text-neutral-700'}`}>
-                    {formatBRL(available)}
-                  </td>
-                  <td className="px-4 py-2">
-                    <div className="flex items-center gap-2">
-                      <div className="flex-1 h-1.5 bg-neutral-200 rounded overflow-hidden">
-                        <div
-                          className={pctColor}
-                          style={{ width: `${Math.min(100, pct)}%`, height: '100%' }}
-                        />
-                      </div>
-                      <span className="text-xs text-neutral-600 w-10 text-right">
-                        {pct.toFixed(0)}%
-                      </span>
-                    </div>
-                  </td>
-                  <td className="px-4 py-2 text-right">
-                    {b?.id && (
-                      <form action={deleteBudgetAction}>
-                        <input type="hidden" name="dimension" value={tab} />
-                        <input type="hidden" name="id" value={b.id} />
-                        <button
-                          type="submit"
-                          className="text-xs text-rose-600 hover:underline"
-                          title="Remover"
-                        >
-                          remover
-                        </button>
-                      </form>
-                    )}
-                  </td>
-                </tr>
+                <MonthlyBudgetRow
+                  key={d.id}
+                  dimension={tab}
+                  groupId={groupId}
+                  fkId={d.id}
+                  budgetId={b?.id ?? null}
+                  fiscalYear={year}
+                  code={d.code}
+                  name={d.name}
+                  monthlyValues={monthlyValues}
+                  realized={realized}
+                  available={available}
+                  budgetedAnnual={annualBudgeted}
+                  upsertAction={upsertBudgetAction}
+                  deleteAction={deleteBudgetAction}
+                  distributeAction={distributeBudgetEvenlyAction}
+                />
               );
             })}
           </tbody>
         </table>
       </div>
 
-      <p className="text-xs text-neutral-500">
-        Orçamento é anual com rateio mensal automático (1/12). Breakdown mensal customizado:
-        próxima iteração.
-      </p>
-
       <div className="text-sm text-neutral-700 bg-amber-50 border border-amber-200 rounded p-3">
-        <strong>Soft lock ativo:</strong> CAPs que estourarem o orçamento (CC ou conta) deste mês
-        de competência são automaticamente promovidos para alçada <code>strategic</code>. Veja
-        regras em <Link href="/configuracoes/alcadas" className="underline">alçadas</Link>.
+        <strong>Soft lock ativo:</strong> CAPs que estourarem o orçamento (CC ou conta) no mês
+        de competência são automaticamente promovidos pra alçada <code>strategic</code>. Veja regras
+        em <Link href="/configuracoes/alcadas" className="underline">alçadas</Link>.
       </div>
     </div>
   );
+}
+
+function buildConsumptionMap(
+  rows: {
+    month?: number;
+    budgeted?: number;
+    committed?: number;
+    paid?: number;
+    [k: string]: unknown;
+  }[],
+  fkCol: string,
+) {
+  const map = new Map<
+    string,
+    { fk_id: string; month: number; budgeted: number; committed: number; paid: number }
+  >();
+  for (const r of rows) {
+    const fkId = r[fkCol] as string;
+    const month = Number(r.month ?? 0);
+    if (!fkId || !month) continue;
+    map.set(`${fkId}|${month}`, {
+      fk_id: fkId,
+      month,
+      budgeted: Number(r.budgeted ?? 0),
+      committed: Number(r.committed ?? 0),
+      paid: Number(r.paid ?? 0),
+    });
+  }
+  return map;
 }
 
 function PageHeader({
@@ -270,12 +282,11 @@ function PageHeader({
       <div>
         <h1 className="font-display text-2xl font-semibold text-maxfem-ink">Orçamento anual</h1>
         <p className="text-sm text-neutral-600 mt-0.5">
-          Por centro de custo e conta contábil. Base de cálculo do travamento de saldo.
+          Valores mensais por centro de custo e conta contábil. Base do travamento de saldo.
         </p>
       </div>
 
       <div className="flex flex-wrap items-center gap-2">
-        {/* Tabs */}
         <div className="inline-flex rounded-lg border border-neutral-200 overflow-hidden">
           <TabLink
             tab="cost_center"
@@ -291,7 +302,6 @@ function PageHeader({
           />
         </div>
 
-        {/* Ano */}
         <form action="/configuracoes/orcamento" className="inline-flex items-center gap-2">
           <input type="hidden" name="tab" value={tab} />
           {groupId && <input type="hidden" name="org" value={groupId} />}
@@ -315,7 +325,6 @@ function PageHeader({
           </button>
         </form>
 
-        {/* Grupo */}
         {groups.length > 1 && (
           <form action="/configuracoes/orcamento" className="inline-flex items-center gap-2">
             <input type="hidden" name="tab" value={tab} />
@@ -401,24 +410,3 @@ function EmptyState({ message }: { message: string }) {
     </div>
   );
 }
-
-// Agrega 12 linhas da view (uma por mês) em 1 linha por dimensão (ano todo)
-function aggregateConsumption(
-  rows: { budgeted: number; committed: number; paid: number; available: number }[] & Record<string, unknown>[],
-  fkCol: string,
-) {
-  const map = new Map<string, { fk_id: string; budgeted: number; committed: number; paid: number; available: number }>();
-  for (const r of rows) {
-    const fkId = r[fkCol] as string;
-    const cur = map.get(fkId) ?? { fk_id: fkId, budgeted: 0, committed: 0, paid: 0, available: 0 };
-    cur.budgeted += Number(r.budgeted ?? 0);
-    cur.committed += Number(r.committed ?? 0);
-    cur.paid += Number(r.paid ?? 0);
-    cur.available += Number(r.available ?? 0);
-    map.set(fkId, cur);
-  }
-  return Array.from(map.values());
-}
-
-// MONTHS_LABEL exported for potential future monthly breakdown UI
-export { MONTHS_LABEL };
