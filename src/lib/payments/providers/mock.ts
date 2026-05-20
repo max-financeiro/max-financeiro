@@ -41,7 +41,9 @@ export class MockPaymentProvider implements PaymentProvider {
     const result: PaymentResult = {
       externalRequestId: `mock_pix_${req.payableId}_${Date.now()}`,
       status: 'pending_approval',
-      estimatedSettlementAt: new Date(Date.now() + 5 * 60 * 1000).toISOString(),
+      estimatedSettlementAt: req.scheduledDate
+        ? new Date(`${req.scheduledDate}T12:00:00Z`).toISOString()
+        : new Date(Date.now() + 5 * 60 * 1000).toISOString(),
     };
     idempotencyCache.set(req.idempotencyKey, result);
     createdAtCache.set(result.externalRequestId, Date.now());
@@ -55,7 +57,9 @@ export class MockPaymentProvider implements PaymentProvider {
     const result: PaymentResult = {
       externalRequestId: `mock_boleto_${req.payableId}_${Date.now()}`,
       status: 'pending_approval',
-      estimatedSettlementAt: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
+      estimatedSettlementAt: req.scheduledDate
+        ? new Date(`${req.scheduledDate}T12:00:00Z`).toISOString()
+        : new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
     };
     idempotencyCache.set(req.idempotencyKey, result);
     createdAtCache.set(result.externalRequestId, Date.now());

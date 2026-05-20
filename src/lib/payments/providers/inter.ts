@@ -127,6 +127,8 @@ export class InterPaymentProvider implements PaymentProvider {
           valor: round2(req.amount),
           descricao: req.description.slice(0, 140),
           destinatario: { tipo: 'CHAVE', chave: req.pixKey },
+          // dataPagamento futura = PIX agendado; ausente = imediato
+          ...(req.scheduledDate ? { dataPagamento: req.scheduledDate } : {}),
         },
       });
 
@@ -167,7 +169,8 @@ export class InterPaymentProvider implements PaymentProvider {
         body: {
           codBarraLinhaDigitavel: req.digitableLine,
           valorPagar: round2(req.amount),
-          dataPagamento: todayISO(),
+          // data futura = boleto agendado; sem agendamento = hoje
+          dataPagamento: req.scheduledDate ?? todayISO(),
         },
       });
 

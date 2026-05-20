@@ -16,6 +16,7 @@ type Props = {
   canRequest: boolean;
   canReject: boolean;
   canCancel: boolean;
+  dueDate: string;
 };
 
 export function ActionButtons({
@@ -25,6 +26,7 @@ export function ActionButtons({
   canRequest,
   canReject,
   canCancel,
+  dueDate,
 }: Props) {
   const [approveState, approveAction, approvePending] = useActionState<ActionState, FormData>(
     approvePayableAction,
@@ -47,6 +49,12 @@ export function ActionButtons({
   const [rejectMode, setRejectMode] = useState(false);
   const [rejectNotes, setRejectNotes] = useState('');
   const [approveNotes, setApproveNotes] = useState('');
+
+  // Agendamento do pagamento
+  const [scheduleMode, setScheduleMode] = useState<'now' | 'due_date' | 'custom'>('now');
+  const [customDate, setCustomDate] = useState('');
+  const today = new Date().toISOString().slice(0, 10);
+  const dueDateBR = dueDate ? dueDate.split('-').reverse().join('/') : '—';
 
   const anyState = approveState ?? rejectState ?? cancelState ?? paymentState;
   const anyPending = approvePending || rejectPending || cancelPending || paymentPending;
@@ -109,13 +117,61 @@ export function ActionButtons({
         <div className="bg-white border border-neutral-200 rounded-lg p-4 space-y-3">
           <h3 className="text-sm font-semibold text-maxfem-ink">Solicitar pagamento ao banco</h3>
           <p className="text-xs text-neutral-600">
-            Envia pra fila de pagamento via Payment Provider configurado (atual: mock). Anti-fraude
-            verifica automaticamente cooldown 24h de mudança bancária do fornecedor — bloqueia se ativo.
+            Envia o PIX ou boleto pro banco. Anti-fraude verifica automaticamente o cooldown 24h de
+            mudança bancária do fornecedor — bloqueia se ativo.
           </p>
+
+          <fieldset className="space-y-2">
+            <legend className="text-xs font-semibold text-maxfem-ink mb-1">Quando pagar</legend>
+            <label className="flex items-center gap-2 text-sm text-neutral-700 cursor-pointer">
+              <input
+                type="radio"
+                name="schedule_mode"
+                checked={scheduleMode === 'now'}
+                onChange={() => setScheduleMode('now')}
+              />
+              Pagar agora
+            </label>
+            <label className="flex items-center gap-2 text-sm text-neutral-700 cursor-pointer">
+              <input
+                type="radio"
+                name="schedule_mode"
+                checked={scheduleMode === 'due_date'}
+                onChange={() => setScheduleMode('due_date')}
+              />
+              Agendar para o vencimento — {dueDateBR}
+            </label>
+            <label className="flex items-center gap-2 text-sm text-neutral-700 cursor-pointer">
+              <input
+                type="radio"
+                name="schedule_mode"
+                checked={scheduleMode === 'custom'}
+                onChange={() => setScheduleMode('custom')}
+              />
+              Escolher data
+            </label>
+            {scheduleMode === 'custom' && (
+              <input
+                type="date"
+                min={today}
+                value={customDate}
+                onChange={(e) => setCustomDate(e.target.value)}
+                className="input-field"
+              />
+            )}
+            <p className="text-xs text-neutral-500">
+              Data futura agenda o pagamento no banco; vencimento já vencido é pago na hora.
+            </p>
+          </fieldset>
+
           <button
             type="button"
-            disabled={anyPending}
-            onClick={() => submit(paymentAction, {})}
+            disabled={anyPending || (scheduleMode === 'custom' && !customDate)}
+            onClick={() => {
+              const fields: Record<string, string> = { schedule_mode: scheduleMode };
+              if (scheduleMode === 'custom') fields.scheduled_date = customDate;
+              submit(paymentAction, fields);
+            }}
             className="btn-primary"
           >
             {paymentPending ? 'Enviando...' : 'Solicitar pagamento'}

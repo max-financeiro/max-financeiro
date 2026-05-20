@@ -21,6 +21,8 @@ export const PixPaymentRequestSchema = z.object({
   pixKey: z.string().min(8).max(140),
   pixKeyType: z.enum(['cpf', 'cnpj', 'email', 'phone', 'random']),
   description: z.string().max(140),
+  /** Data (YYYY-MM-DD) pra agendar o pagamento. Ausente = imediato. */
+  scheduledDate: z.string().date().optional(),
 });
 export type PixPaymentRequest = z.infer<typeof PixPaymentRequestSchema>;
 
@@ -31,6 +33,8 @@ export const BoletoPaymentRequestSchema = z.object({
   digitableLine: z.string().regex(/^\d{47,48}$/, 'Linha digitável inválida'),
   beneficiaryDocument: z.string(),
   beneficiaryName: z.string(),
+  /** Data (YYYY-MM-DD) pra agendar o pagamento. Ausente = imediato. */
+  scheduledDate: z.string().date().optional(),
 });
 export type BoletoPaymentRequest = z.infer<typeof BoletoPaymentRequestSchema>;
 

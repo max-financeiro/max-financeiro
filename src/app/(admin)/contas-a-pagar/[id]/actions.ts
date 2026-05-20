@@ -45,6 +45,7 @@ type LoadedCap = {
     pix_key: string | null;
     pix_key_type: string | null;
     boleto_barcode: string | null;
+    due_date: string;
   };
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   supabase: any;
@@ -76,7 +77,7 @@ async function loadCapWithAuth(
   const { data: cap } = await supabase
     .from('accounts_payable')
     .select(
-      'id, status, approval_level_required, amount, organization_id, supplier_id, reference_number, payment_method, pix_key, pix_key_type, boleto_barcode',
+      'id, status, approval_level_required, amount, organization_id, supplier_id, reference_number, payment_method, pix_key, pix_key_type, boleto_barcode, due_date',
     )
     .eq('id', payableId)
     .maybeSingle();
@@ -296,7 +297,12 @@ export async function cancelPayableAction(
 // ============================================================
 // SOLICITAR PAGAMENTO — fluxo crítico com verificação de cooldown
 // ============================================================
-const RequestPaymentSchema = z.object({ payable_id: z.string().uuid() });
+const RequestPaymentSchema = z.object({
+  payable_id: z.string().uuid(),
+  // 'now' = imediato · 'due_date' = agenda pro vencimento do CAP · 'custom' = data livre
+  schedule_mode: z.enum(['now', 'due_date', 'custom']).default('now'),
+  scheduled_date: z.string().optional(),
+});
 
 export async function requestPaymentAction(
   _prev: ActionState,
@@ -304,6 +310,8 @@ export async function requestPaymentAction(
 ): Promise<ActionState> {
   const parsed = RequestPaymentSchema.safeParse({
     payable_id: formData.get('payable_id'),
+    schedule_mode: formData.get('schedule_mode') ?? undefined,
+    scheduled_date: formData.get('scheduled_date') ?? undefined,
   });
   if (!parsed.success) return { ok: false, error: 'Dados inválidos' };
 
@@ -361,6 +369,30 @@ export async function requestPaymentAction(
   }
 
   // ============================================================
+  // Agendamento — data do pagamento no banco
+  //   now      → imediato
+  //   due_date → vencimento do CAP
+  //   custom   → data livre escolhida pelo usuário
+  // ============================================================
+  const today = new Date().toISOString().slice(0, 10);
+  let scheduledDate: string | undefined;
+
+  if (parsed.data.schedule_mode === 'custom') {
+    const d = parsed.data.scheduled_date?.trim();
+    if (!d || !/^\d{4}-\d{2}-\d{2}$/.test(d)) {
+      return { ok: false, error: 'Escolha uma data válida para o agendamento.' };
+    }
+    if (d < today) {
+      return { ok: false, error: 'A data de agendamento não pode ser no passado.' };
+    }
+    scheduledDate = d;
+  } else if (parsed.data.schedule_mode === 'due_date') {
+    scheduledDate = cap.due_date;
+  }
+  // Data de hoje ou já vencida → paga imediato em vez de agendar
+  if (scheduledDate && scheduledDate <= today) scheduledDate = undefined;
+
+  // ============================================================
   // Provider de pagamento — mock em dev/staging, Inter real em produção
   // ============================================================
   const provider = getPaymentProvider();
@@ -403,17 +435,21 @@ export async function requestPaymentAction(
   // Cria pagamento (idempotency_key UNIQUE evita retry duplicado)
   // ============================================================
   const idempotencyKey = randomUUID();
-  const { data: payment, error: payErr } = await admin
+  const paymentRow = {
+    payable_id: cap.id,
+    amount: cap.amount,
+    payment_method: cap.payment_method,
+    provider: provider.name,
+    idempotency_key: idempotencyKey,
+    provider_status: 'pending_approval',
+    requested_by: user.id,
+    scheduled_for: scheduledDate ?? null,
+  };
+  // `scheduled_for` ainda não está nos types gerados do Supabase — cast localizado.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const { data: payment, error: payErr } = await (admin as any)
     .from('payments')
-    .insert({
-      payable_id: cap.id,
-      amount: cap.amount,
-      payment_method: cap.payment_method,
-      provider: provider.name,
-      idempotency_key: idempotencyKey,
-      provider_status: 'pending_approval',
-      requested_by: user.id,
-    })
+    .insert(paymentRow)
     .select('id')
     .single();
 
@@ -435,6 +471,7 @@ export async function requestPaymentAction(
             pixKey,
             pixKeyType,
             description: cap.reference_number ?? `CAP ${cap.id}`,
+            scheduledDate,
           })
         : method === 'boleto'
           ? await provider.sendBoleto({
@@ -444,6 +481,7 @@ export async function requestPaymentAction(
               digitableLine,
               beneficiaryDocument: '',
               beneficiaryName: '',
+              scheduledDate,
             })
           : {
               externalRequestId: `mock_other_${cap.id}_${Date.now()}`,
@@ -508,15 +546,19 @@ export async function requestPaymentAction(
         provider: provider.name,
         external_request_id: result.externalRequestId,
         amount: cap.amount,
+        scheduled_for: scheduledDate ?? null,
         requested_by_role: profile.role,
       },
       organizationId: cap.organization_id,
     });
 
     revalidatePath(`/contas-a-pagar/${cap.id}`);
+    const quando = scheduledDate
+      ? `agendado para ${scheduledDate.split('-').reverse().join('/')}`
+      : 'solicitado';
     return {
       ok: true,
-      message: `Pagamento solicitado via ${
+      message: `Pagamento ${quando} via ${
         provider.name === 'inter' ? 'Banco Inter' : provider.name
       }. ID externo: ${result.externalRequestId}`,
     };

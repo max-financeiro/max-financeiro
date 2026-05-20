@@ -405,6 +405,7 @@ export default async function CAPDetailPage({
             canRequest={canRequest}
             canReject={canReject}
             canCancel={canCancel}
+            dueDate={cap.due_date}
           />
 
           <CAPTimeline
