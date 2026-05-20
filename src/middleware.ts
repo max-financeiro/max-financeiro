@@ -23,6 +23,13 @@ const PUBLIC_ROUTES = [
   '/portal/entrar',
   '/auth/callback',
   '/api/health',
+  // Webhooks de banco (Inter etc): chamados por sistemas externos sem sessão.
+  // A própria rota se protege (caminho secreto + HMAC + IP allowlist + anti-replay).
+  '/api/webhooks',
+  // Crons do Vercel: disparados sem sessão de usuário. Cada rota se protege
+  // exigindo o header Authorization: Bearer ${CRON_SECRET}.
+  '/api/focus/sync',
+  '/api/bling/sync',
   '/legal/privacidade',
   '/legal/termos',
 ];
