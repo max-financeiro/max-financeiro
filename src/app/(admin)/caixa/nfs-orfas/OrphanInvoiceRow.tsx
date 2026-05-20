@@ -25,7 +25,7 @@ const SOURCE_LABEL: Record<string, string> = {
   imported: 'Importado',
 };
 
-export function OrphanInvoiceRow({ nf }: { nf: Nf }) {
+export function OrphanInvoiceRow({ nf, empresa }: { nf: Nf; empresa: string }) {
   const [approveState, approveAction] = useActionState<ActionState, FormData>(approveOrphanAction, null);
   const [rejectState, rejectAction] = useActionState<ActionState, FormData>(rejectOrphanAction, null);
   const [pending, startTransition] = useTransition();
@@ -50,6 +50,7 @@ export function OrphanInvoiceRow({ nf }: { nf: Nf }) {
       <td className="px-4 py-2 text-xs text-neutral-500">
         {new Date(nf.issue_date).toLocaleDateString('pt-BR')}
       </td>
+      <td className="px-4 py-2 text-xs text-neutral-600">{empresa}</td>
       <td className="px-4 py-2 font-mono text-xs">
         {nf.number}
         {nf.series && <span className="text-neutral-400">/{nf.series}</span>}
