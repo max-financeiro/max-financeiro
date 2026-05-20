@@ -17,6 +17,14 @@ type Nf = {
   created_at: string;
 };
 
+const SOURCE_LABEL: Record<string, string> = {
+  focus: 'Focus NFe',
+  bling: 'Bling',
+  supplier_portal: 'Portal fornecedor',
+  manual: 'Manual',
+  imported: 'Importado',
+};
+
 export function OrphanInvoiceRow({ nf }: { nf: Nf }) {
   const [approveState, approveAction] = useActionState<ActionState, FormData>(approveOrphanAction, null);
   const [rejectState, rejectAction] = useActionState<ActionState, FormData>(rejectOrphanAction, null);
@@ -51,7 +59,7 @@ export function OrphanInvoiceRow({ nf }: { nf: Nf }) {
       <td className="px-4 py-2 text-right">
         {Number(nf.total_amount).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
       </td>
-      <td className="px-4 py-2 text-xs text-neutral-500">{nf.source}</td>
+      <td className="px-4 py-2 text-xs text-neutral-500">{SOURCE_LABEL[nf.source] ?? nf.source}</td>
       <td className="px-4 py-2 text-right space-x-2">
         {message && <span className="text-xs text-emerald-700 mr-2">{message}</span>}
         {error && <span className="text-xs text-red-700 mr-2">{error}</span>}

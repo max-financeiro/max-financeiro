@@ -20,7 +20,7 @@ const SECTIONS: Section[] = [
   {
     title: 'Caixa',
     items: [
-      { href: '/caixa/nfs-orfas', label: 'NFs órfãs · Bling' },
+      { href: '/caixa/nfs-orfas', label: 'NFs órfãs' },
       { href: '/conciliacao-bancaria', label: 'Conciliação bancária', soon: true },
     ],
   },

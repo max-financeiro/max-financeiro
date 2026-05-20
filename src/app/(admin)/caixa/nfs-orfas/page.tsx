@@ -1,6 +1,7 @@
 import { createClient } from '@/lib/supabase/server';
 import { redirect } from 'next/navigation';
 import { OrphanInvoiceRow } from './OrphanInvoiceRow';
+import { SyncFocusButton } from './SyncFocusButton';
 
 export const dynamic = 'force-dynamic';
 
@@ -32,19 +33,23 @@ export default async function NfsOrfasPage() {
 
   return (
     <div className="max-w-6xl mx-auto p-6">
-      <header className="mb-6">
-        <h1 className="text-2xl font-semibold text-maxfem-pink">NFs órfãs</h1>
-        <p className="text-sm text-neutral-600 mt-1">
-          Notas que chegaram pelo Bling mas não vieram pelo portal do fornecedor.
-          Revise e aprove pra gerar a CAP automaticamente, ou descarte.
-        </p>
+      <header className="mb-6 flex flex-wrap items-start justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-semibold text-maxfem-pink">NFs órfãs</h1>
+          <p className="text-sm text-neutral-600 mt-1">
+            Notas fiscais recebidas pela Maxfem (Matriz, Filial MG, Filial SP), capturadas
+            da SEFAZ via Focus NFe. Revise e aprove pra gerar a CAP automaticamente, ou descarte.
+          </p>
+        </div>
+        <SyncFocusButton />
       </header>
 
       {!orphans || orphans.length === 0 ? (
         <div className="bg-white rounded-lg border border-neutral-200 p-12 text-center">
           <p className="text-neutral-700 font-medium">Nenhuma NF órfã pendente</p>
           <p className="text-sm text-neutral-500 mt-1">
-            Todo registro vindo do Bling está vinculado a uma NF do portal ou já foi processado.
+            Toda nota recebida já foi processada. Clique em &ldquo;Sincronizar agora&rdquo; pra
+            buscar novas notas na SEFAZ.
           </p>
         </div>
       ) : (
