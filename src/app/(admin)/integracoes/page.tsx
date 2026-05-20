@@ -23,7 +23,7 @@ export default async function IntegracoesHubPage() {
   const supabase = await createClient();
 
   // Status real das integrações já implementadas
-  const [bling, gemini] = await Promise.all([
+  const [bling, gemini, asaas] = await Promise.all([
     supabase
       .from('bling_connection_status')
       .select('active, connected_at')
@@ -32,6 +32,13 @@ export default async function IntegracoesHubPage() {
     supabase
       .from('gemini_connection_status')
       .select('active, model, connected_at, last_validation_status')
+      .eq('active', true)
+      .maybeSingle(),
+    // View asaas_connection_status ainda não está nos types gerados — bypass localizado.
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (supabase as any)
+      .from('asaas_connection_status')
+      .select('active, environment, connected_at')
       .eq('active', true)
       .maybeSingle(),
   ]);
@@ -62,6 +69,20 @@ export default async function IntegracoesHubPage() {
       brand: 'amber',
     },
     {
+      slug: 'asaas',
+      name: 'Asaas',
+      category: 'Banco',
+      description: 'Conta digital e cobranças. Saldo, extrato e cobranças via API Asaas.',
+      href: '/integracoes/asaas',
+      status: asaas.data?.active ? 'connected' : 'not_connected',
+      statusDetail: asaas.data?.active
+        ? `Conectado em ${new Date(asaas.data.connected_at!).toLocaleDateString('pt-BR')} · ${
+            asaas.data.environment === 'sandbox' ? 'Sandbox' : 'Produção'
+          }`
+        : 'Sem credencial — conecte a API key do Asaas.',
+      brand: 'sky',
+    },
+    {
       slug: 'inter',
       name: 'Banco Inter',
       category: 'Banco',
@@ -69,7 +90,7 @@ export default async function IntegracoesHubPage() {
       href: '/integracoes',
       status: 'coming_soon',
       statusDetail: 'Sprint 5 · aguardando ativação da Inter API Banking.',
-      brand: 'sky',
+      brand: 'violet',
     },
     {
       slug: 'btg',
