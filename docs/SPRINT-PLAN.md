@@ -171,16 +171,20 @@
 
 Ver [SPRINT-0-INTER-SPEC.md](SPRINT-0-INTER-SPEC.md). 8 critérios de aceitação binários. Gate crítico.
 
-### Sprint 5 — Integração Inter real (2 semanas) — **ESPERA Sprint 0**
+### Sprint 5 — Integração Inter real — **IMPLEMENTADA (2026-05-20)**
 
-Substitui `MockPaymentProvider` por `InterPaymentProvider`. Toda UI/regra/auditoria já está pronta da Sprint 3 — só conecta a integração real.
+Substitui `MockPaymentProvider` por `InterPaymentProvider`. Toda UI/regra/auditoria já estava pronta da Sprint 3 — esta sprint conectou a integração real. Detalhes em [SPRINT-5-INTER.md](SPRINT-5-INTER.md).
 
 **Entregas:**
-- [ ] `InterPaymentProvider` com mTLS, OAuth2, idempotência, rate limit
-- [ ] Webhook receiver `/api/webhooks/inter/[secret-path]` com HMAC + IP allowlist + anti-replay + idempotência
-- [ ] Sync de status (paid / failed / canceled)
-- [ ] Sync diário de extrato pra reconciliação
-- [ ] Comprovante automatizado pro fornecedor
+- [x] `InterPaymentProvider` com mTLS, OAuth2, idempotência (`x-id-idempotente`) e erros estruturados
+- [x] Webhook receiver `/api/webhooks/inter/[secret]` com caminho secreto + HMAC + IP allowlist + anti-replay + idempotência por `event_id`
+- [x] Migrations `inter_credentials` (segredos encrypted pgcrypto) + `inter_webhook_events`
+- [x] UI `/integracoes/inter` — conectar/desconectar com validação real e registro automático de webhook
+- [x] Sync de status — `getStatus()` (polling) + webhook (push) atualizam `payments` e `accounts_payable`
+- [x] `getExtract()` pronto pra conciliação (cron diário entra na Sprint 7-B)
+- [ ] Comprovante (PDF) automatizado pro fornecedor — pendente
+
+**Ativação:** conectar a credencial em `/integracoes/inter` e definir `PAYMENT_PROVIDER=inter`.
 
 ### Sprint 6 — DDA BTG (2 semanas) — **ESPERA BTG Empresas**
 

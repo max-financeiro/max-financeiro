@@ -42,6 +42,9 @@ type LoadedCap = {
     supplier_id: string | null;
     reference_number: string | null;
     payment_method: string;
+    pix_key: string | null;
+    pix_key_type: string | null;
+    boleto_barcode: string | null;
   };
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   supabase: any;
@@ -73,7 +76,7 @@ async function loadCapWithAuth(
   const { data: cap } = await supabase
     .from('accounts_payable')
     .select(
-      'id, status, approval_level_required, amount, organization_id, supplier_id, reference_number, payment_method',
+      'id, status, approval_level_required, amount, organization_id, supplier_id, reference_number, payment_method, pix_key, pix_key_type, boleto_barcode',
     )
     .eq('id', payableId)
     .maybeSingle();
@@ -358,6 +361,45 @@ export async function requestPaymentAction(
   }
 
   // ============================================================
+  // Provider de pagamento — mock em dev/staging, Inter real em produção
+  // ============================================================
+  const provider = getPaymentProvider();
+  const isMock = provider.name === 'mock';
+  const method = cap.payment_method;
+
+  if (method !== 'pix' && method !== 'boleto' && !isMock) {
+    return {
+      ok: false,
+      error: `Método "${method}" não é suportado pelo Banco Inter — use PIX ou boleto.`,
+    };
+  }
+
+  // Dados bancários: snapshot gravado no CAP na criação. Obrigatórios em
+  // produção (Inter); no mock aceitamos placeholders pra não travar o dev.
+  let pixKey = cap.pix_key ?? '';
+  const pixKeyType = (cap.pix_key_type ?? 'cpf') as
+    | 'cpf'
+    | 'cnpj'
+    | 'email'
+    | 'phone'
+    | 'random';
+  let digitableLine = (cap.boleto_barcode ?? '').replace(/\D/g, '');
+
+  if (method === 'pix' && !isMock && !pixKey) {
+    return {
+      ok: false,
+      error: 'CAP sem chave PIX — preencha os dados bancários antes de enviar pro banco.',
+    };
+  }
+  if (method === 'boleto' && !isMock && !/^\d{47,48}$/.test(digitableLine)) {
+    return { ok: false, error: 'CAP sem linha digitável de boleto válida (47-48 dígitos).' };
+  }
+  if (isMock) {
+    if (!pixKey) pixKey = '00000000000';
+    if (!/^\d{47,48}$/.test(digitableLine)) digitableLine = '0'.repeat(47);
+  }
+
+  // ============================================================
   // Cria pagamento (idempotency_key UNIQUE evita retry duplicado)
   // ============================================================
   const idempotencyKey = randomUUID();
@@ -367,7 +409,7 @@ export async function requestPaymentAction(
       payable_id: cap.id,
       amount: cap.amount,
       payment_method: cap.payment_method,
-      provider: 'mock',
+      provider: provider.name,
       idempotency_key: idempotencyKey,
       provider_status: 'pending_approval',
       requested_by: user.id,
@@ -380,35 +422,65 @@ export async function requestPaymentAction(
     return { ok: false, error: payErr?.message ?? 'Falha ao criar registro de pagamento' };
   }
 
-  // Chama Payment Provider (Mock no Sprint 3; Inter real no Sprint 5)
+  // Chama o Payment Provider
   try {
-    const provider = getPaymentProvider();
     await provider.authenticate();
 
     const result =
-      cap.payment_method === 'pix'
+      method === 'pix'
         ? await provider.sendPix({
             idempotencyKey,
             payableId: cap.id,
             amount: cap.amount,
-            // Mock: dados fake. Em Inter real, vamos decriptar via RPC.
-            pixKey: '00000000000',
-            pixKeyType: 'cpf',
-            description: cap.reference_number ?? '',
+            pixKey,
+            pixKeyType,
+            description: cap.reference_number ?? `CAP ${cap.id}`,
           })
-        : cap.payment_method === 'boleto'
+        : method === 'boleto'
           ? await provider.sendBoleto({
               idempotencyKey,
               payableId: cap.id,
               amount: cap.amount,
-              digitableLine: '00000000000000000000000000000000000000000000000',
-              beneficiaryDocument: '00000000000000',
-              beneficiaryName: 'MOCK',
+              digitableLine,
+              beneficiaryDocument: '',
+              beneficiaryName: '',
             })
           : {
               externalRequestId: `mock_other_${cap.id}_${Date.now()}`,
               status: 'pending_approval' as const,
             };
+
+    // Provider devolve erro estruturado (status 'failed') em vez de exception
+    if (result.status === 'failed') {
+      await admin
+        .from('payments')
+        .update({
+          provider_status: 'failed',
+          provider_request_id: result.externalRequestId || null,
+          provider_error_code: result.errorCode ?? null,
+          provider_error_message: result.errorMessage ?? null,
+        })
+        .eq('id', payment.id);
+
+      await logAuditEvent(supabase, {
+        action: 'cap.payment_failed',
+        entityType: 'accounts_payable',
+        entityId: cap.id,
+        afterState: {
+          payment_id: payment.id,
+          provider: provider.name,
+          error_code: result.errorCode ?? null,
+        },
+        organizationId: cap.organization_id,
+      });
+
+      return {
+        ok: false,
+        error: `${provider.name === 'inter' ? 'Banco Inter' : 'Provider'} recusou o pagamento: ${
+          result.errorMessage ?? result.errorCode ?? 'erro desconhecido'
+        }`,
+      };
+    }
 
     // Atualiza payment com result do provider
     await admin
@@ -433,7 +505,7 @@ export async function requestPaymentAction(
       entityId: cap.id,
       afterState: {
         payment_id: payment.id,
-        provider: 'mock',
+        provider: provider.name,
         external_request_id: result.externalRequestId,
         amount: cap.amount,
         requested_by_role: profile.role,
@@ -444,7 +516,9 @@ export async function requestPaymentAction(
     revalidatePath(`/contas-a-pagar/${cap.id}`);
     return {
       ok: true,
-      message: `Pagamento solicitado (mock). External request: ${result.externalRequestId}`,
+      message: `Pagamento solicitado via ${
+        provider.name === 'inter' ? 'Banco Inter' : provider.name
+      }. ID externo: ${result.externalRequestId}`,
     };
   } catch (err) {
     console.error(TAG, 'provider_call_failed', err);

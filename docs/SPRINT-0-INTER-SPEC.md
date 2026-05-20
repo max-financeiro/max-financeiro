@@ -3,6 +3,12 @@
 > **Antes de qualquer outra linha de código do MVP.**
 > Se algum critério falhar, replanejar a arquitetura antes de seguir.
 
+> **Atualização 2026-05-20:** a integração real foi implementada na Sprint 5
+> ([SPRINT-5-INTER.md](SPRINT-5-INTER.md)). Os 8 critérios de aceitação abaixo
+> agora servem de **checklist de validação live** — rode-os contra a conta PJ
+> com credenciais reais antes do go-live. Ver o mapeamento CA→código no doc da
+> Sprint 5.
+
 ## Objetivo
 
 Validar end-to-end em sandbox que a API do Banco Inter PJ aguenta o fluxo de pagamento que a arquitetura pressupõe:

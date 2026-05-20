@@ -23,7 +23,7 @@ export default async function IntegracoesHubPage() {
   const supabase = await createClient();
 
   // Status real das integrações já implementadas
-  const [bling, gemini, asaas] = await Promise.all([
+  const [bling, gemini, asaas, inter] = await Promise.all([
     supabase
       .from('bling_connection_status')
       .select('active, connected_at')
@@ -34,11 +34,17 @@ export default async function IntegracoesHubPage() {
       .select('active, model, connected_at, last_validation_status')
       .eq('active', true)
       .maybeSingle(),
-    // View asaas_connection_status ainda não está nos types gerados — bypass localizado.
+    // Views asaas/inter_connection_status ainda não estão nos types gerados — bypass localizado.
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     (supabase as any)
       .from('asaas_connection_status')
       .select('active, environment, connected_at')
+      .eq('active', true)
+      .maybeSingle(),
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (supabase as any)
+      .from('inter_connection_status')
+      .select('active, environment, connected_at, webhook_registered_at')
       .eq('active', true)
       .maybeSingle(),
   ]);
@@ -86,10 +92,14 @@ export default async function IntegracoesHubPage() {
       slug: 'inter',
       name: 'Banco Inter',
       category: 'Banco',
-      description: 'PIX, boleto e TED via Inter API Banking. Pagamentos com mTLS + webhook HMAC.',
-      href: '/integracoes',
-      status: 'coming_soon',
-      statusDetail: 'Sprint 5 · aguardando ativação da Inter API Banking.',
+      description: 'PIX e boleto via Inter API Banking. Pagamentos com mTLS + webhook de confirmação.',
+      href: '/integracoes/inter',
+      status: inter.data?.active ? 'connected' : 'not_connected',
+      statusDetail: inter.data?.active
+        ? `Conectado em ${new Date(inter.data.connected_at!).toLocaleDateString('pt-BR')} · ${
+            inter.data.environment === 'sandbox' ? 'Sandbox' : 'Produção'
+          }${inter.data.webhook_registered_at ? ' · webhook ativo' : ' · webhook pendente'}`
+        : 'Sem credencial — conecte a API Banking do Inter.',
       brand: 'violet',
     },
     {
