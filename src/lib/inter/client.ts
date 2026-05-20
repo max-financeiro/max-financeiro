@@ -234,7 +234,7 @@ export const INTER_WEBHOOK_TYPES = ['pix-pagamento', 'boleto-pagamento'] as cons
 export type InterWebhookType = (typeof INTER_WEBHOOK_TYPES)[number];
 
 /**
- * Registra (ou atualiza) a URL de webhook no Inter — `PUT /banking/v2/webhook/{tipo}`.
+ * Registra (ou atualiza) a URL de webhook no Inter — `PUT /banking/v2/webhooks/{tipo}`.
  * O Inter faz uma chamada de teste na URL; ela precisa ser HTTPS pública.
  */
 export async function putInterWebhook(args: {
@@ -251,7 +251,7 @@ export async function putInterWebhook(args: {
     accessToken: args.accessToken,
     contaCorrente: args.contaCorrente,
     method: 'PUT',
-    path: `/banking/v2/webhook/${args.tipoWebhook}`,
+    path: `/banking/v2/webhooks/${args.tipoWebhook}`,
     body: { webhookUrl: args.webhookUrl },
   });
 }
