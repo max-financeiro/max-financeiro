@@ -30,9 +30,13 @@ type AnySupabase = SupabaseClient<any, any, any>;
 export async function logAuditEvent(supabase: AnySupabase, event: AuditEvent): Promise<void> {
   try {
     const headersList = await headers();
+    // Prefere headers do edge (não falsificáveis pelo cliente). XFF cru só é
+    // confiável atrás de proxy reverso — fica como último fallback.
     const ip =
-      headersList.get('x-forwarded-for')?.split(',')[0]?.trim() ??
+      headersList.get('cf-connecting-ip') ??
+      headersList.get('x-vercel-forwarded-for')?.split(',')[0]?.trim() ??
       headersList.get('x-real-ip') ??
+      headersList.get('x-forwarded-for')?.split(',')[0]?.trim() ??
       undefined;
     const userAgent = headersList.get('user-agent') ?? undefined;
 
