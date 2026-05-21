@@ -4,9 +4,10 @@ import { z } from 'zod';
 import { revalidatePath } from 'next/cache';
 import { createClient } from '@/lib/supabase/server';
 import { logAuditEvent } from '@/lib/auth/audit';
-// SERVICE_ROLE: o sync de NFes recebidas itera todas as filiais e lê tokens
-// criptografados via RPC — precisa bypassar RLS. A autorização do usuário é
-// validada antes (role master/financial_manager/financial_analyst).
+// SERVICE_ROLE: (1) o sync de NFes itera filiais e lê tokens criptografados;
+// (2) fiscal_documents só tem RLS de SELECT — aprovar/descartar (UPDATE de
+// status) precisa do admin client. A autorização do usuário (role
+// master/financial_manager/financial_analyst) é validada antes em cada caso.
 // eslint-disable-next-line no-restricted-imports
 import { getAdminClient } from '@/lib/supabase/admin';
 import { syncFocusReceivedNfes } from '@/lib/focus/sync';
@@ -38,13 +39,19 @@ export async function approveOrphanAction(_prev: ActionState, formData: FormData
     return { ok: false, error: 'Sem permissão' };
   }
 
-  const { error } = await supabase
+  // fiscal_documents só tem RLS de SELECT → UPDATE via admin client.
+  const admin = getAdminClient();
+  const { data: updated, error } = await admin
     .from('fiscal_documents')
     .update({ status: 'validated' })
     .eq('id', parsed.data.fiscal_document_id)
-    .eq('status', 'orphan');
+    .eq('status', 'orphan')
+    .select('id');
 
   if (error) return { ok: false, error: error.message };
+  if (!updated || updated.length === 0) {
+    return { ok: false, error: 'NF não encontrada ou já processada.' };
+  }
 
   await logAuditEvent(supabase, {
     action: 'fiscal_document.orphan_approved',
@@ -53,7 +60,8 @@ export async function approveOrphanAction(_prev: ActionState, formData: FormData
   });
 
   revalidatePath('/caixa/nfs-orfas');
-  return { ok: true, message: 'NF aprovada — CAP foi criado automaticamente.' };
+  revalidatePath('/contas-a-pagar');
+  return { ok: true, message: 'NF aprovada — CAP criada automaticamente em Contas a pagar.' };
 }
 
 export async function rejectOrphanAction(_prev: ActionState, formData: FormData): Promise<ActionState> {
@@ -64,13 +72,28 @@ export async function rejectOrphanAction(_prev: ActionState, formData: FormData)
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return { ok: false, error: 'Não autenticado' };
 
-  const { error } = await supabase
+  const { data: profile } = await supabase
+    .from('user_profiles')
+    .select('role')
+    .eq('user_id', user.id)
+    .maybeSingle();
+  if (!profile || !['master', 'financial_manager', 'financial_analyst'].includes(profile.role)) {
+    return { ok: false, error: 'Sem permissão' };
+  }
+
+  // fiscal_documents só tem RLS de SELECT → UPDATE via admin client.
+  const admin = getAdminClient();
+  const { data: updated, error } = await admin
     .from('fiscal_documents')
     .update({ status: 'cancelled' })
     .eq('id', parsed.data.fiscal_document_id)
-    .eq('status', 'orphan');
+    .eq('status', 'orphan')
+    .select('id');
 
   if (error) return { ok: false, error: error.message };
+  if (!updated || updated.length === 0) {
+    return { ok: false, error: 'NF não encontrada ou já processada.' };
+  }
 
   await logAuditEvent(supabase, {
     action: 'fiscal_document.orphan_rejected',
