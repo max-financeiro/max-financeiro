@@ -6,6 +6,7 @@ import { formatBRL, formatDate, formatDateTime, formatDocument } from '@/lib/for
 import { ActionButtons } from './ActionButtons';
 import { AttachmentsSection } from './AttachmentsSection';
 import { CAPTimeline } from './CAPTimeline';
+import { InterReceiptButton } from './InterReceiptButton';
 
 export const metadata: Metadata = { title: 'CAP' };
 
@@ -387,6 +388,9 @@ export default async function CAPDetailPage({
                       )}
                       {p.provider_error_message && (
                         <p className="text-xs text-rose-700 mt-1">{p.provider_error_message}</p>
+                      )}
+                      {p.provider === 'inter' && p.provider_status === 'paid' && (
+                        <InterReceiptButton paymentId={p.id} />
                       )}
                     </div>
                   </li>

@@ -10,6 +10,8 @@ import { getAdminClient } from '@/lib/supabase/admin';
 import { createClient } from '@/lib/supabase/server';
 import { logAuditEvent } from '@/lib/auth/audit';
 import { getPaymentProvider } from '@/lib/payments/factory';
+import { getInterStatementPdf } from '@/lib/inter/statement';
+import { InterApiError } from '@/lib/inter/errors';
 
 const TAG = '[cap-action]';
 
@@ -682,6 +684,144 @@ export async function addAttachmentAction(
 
   revalidatePath(`/contas-a-pagar/${cap.id}`);
   return { ok: true, message: 'Anexo adicionado.' };
+}
+
+// ============================================================
+// PUXAR COMPROVANTE DO INTER — anexa o comprovante de pagamento
+// direto da API do Banco Inter, sem entrar no internet banking.
+//
+// O Inter não expõe comprovante por transação; o documento oficial
+// é o extrato (PDF) da data de liquidação — que contém o pagamento.
+// ============================================================
+const InterReceiptSchema = z.object({
+  payment_id: z.string().uuid(),
+});
+
+export async function attachInterReceiptAction(
+  _prev: AttachmentState,
+  formData: FormData,
+): Promise<AttachmentState> {
+  const parsed = InterReceiptSchema.safeParse({ payment_id: formData.get('payment_id') });
+  if (!parsed.success) return { ok: false, error: 'Pagamento inválido' };
+
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { ok: false, error: 'Sessão expirada' };
+
+  const { data: profile } = await supabase
+    .from('user_profiles')
+    .select('role')
+    .eq('user_id', user.id)
+    .maybeSingle();
+  if (!profile || !['master', 'financial_manager', 'financial_analyst'].includes(profile.role)) {
+    return { ok: false, error: 'Sem permissão' };
+  }
+
+  const admin = getAdminClient();
+
+  // Pagamento + validação: precisa ser Inter e estar liquidado
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const { data: payment } = await (admin as any)
+    .from('payments')
+    .select('id, payable_id, provider, provider_status, provider_request_id, settled_at, created_at')
+    .eq('id', parsed.data.payment_id)
+    .maybeSingle();
+  if (!payment) return { ok: false, error: 'Pagamento não encontrado' };
+  if (payment.provider !== 'inter') {
+    return { ok: false, error: 'Comprovante só está disponível para pagamentos via Banco Inter' };
+  }
+  if (payment.provider_status !== 'paid') {
+    return {
+      ok: false,
+      error: 'O comprovante só pode ser puxado depois que o Inter confirmar o pagamento.',
+    };
+  }
+
+  const { data: cap } = await admin
+    .from('accounts_payable')
+    .select('id, organization_id, reference_number')
+    .eq('id', payment.payable_id)
+    .maybeSingle();
+  if (!cap) return { ok: false, error: 'CAP não encontrada' };
+
+  // Caminho determinístico → idempotente (upsert) e detectável
+  const storagePath = `${cap.organization_id}/${cap.id}/comprovante-inter-${payment.id}.pdf`;
+
+  const { data: existing } = await admin
+    .from('accounts_payable_attachments')
+    .select('id')
+    .eq('storage_path', storagePath)
+    .is('deleted_at', null)
+    .maybeSingle();
+  if (existing) {
+    return { ok: true, message: 'O comprovante já estava anexado nesta CAP.' };
+  }
+
+  // Data de liquidação → intervalo do extrato (comprovante)
+  const settledDate = String(payment.settled_at ?? payment.created_at).slice(0, 10);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(settledDate)) {
+    return { ok: false, error: 'Data de liquidação inválida no pagamento.' };
+  }
+
+  let pdf: Buffer;
+  try {
+    pdf = await getInterStatementPdf(settledDate, settledDate);
+  } catch (err) {
+    console.error(TAG, 'inter_receipt_fetch_failed', err);
+    const msg =
+      err instanceof InterApiError
+        ? err.message
+        : err instanceof Error
+          ? err.message
+          : 'erro desconhecido';
+    return { ok: false, error: `Não consegui puxar o comprovante no Inter: ${msg}` };
+  }
+
+  const { error: uploadErr } = await admin.storage
+    .from('cap-attachments')
+    .upload(storagePath, pdf, { contentType: 'application/pdf', upsert: true });
+  if (uploadErr) {
+    return { ok: false, error: `Falha ao salvar o comprovante: ${uploadErr.message}` };
+  }
+
+  const fileName = `Comprovante Inter ${settledDate.split('-').reverse().join('-')}.pdf`;
+  // `source: 'inter'` adicionado pela migration 20260521000006 — ainda não
+  // está nos types gerados do Supabase, então cast localizado.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const { error: insertErr } = await (admin as any)
+    .from('accounts_payable_attachments')
+    .insert({
+      accounts_payable_id: cap.id,
+      organization_id: cap.organization_id,
+      storage_path: storagePath,
+      file_name: fileName,
+      mime_type: 'application/pdf',
+      size_bytes: pdf.length,
+      kind: 'receipt',
+      source: 'inter',
+      uploaded_by: user.id,
+    });
+  if (insertErr) {
+    await admin.storage.from('cap-attachments').remove([storagePath]);
+    return { ok: false, error: `Falha ao registrar o comprovante: ${insertErr.message}` };
+  }
+
+  await logAuditEvent(supabase, {
+    action: 'cap.inter_receipt_attached',
+    entityType: 'accounts_payable',
+    entityId: cap.id,
+    afterState: {
+      payment_id: payment.id,
+      provider_request_id: payment.provider_request_id ?? null,
+      settled_date: settledDate,
+    },
+    organizationId: cap.organization_id,
+  });
+
+  revalidatePath(`/contas-a-pagar/${cap.id}`);
+  return { ok: true, message: 'Comprovante do Inter anexado na CAP.' };
 }
 
 export async function deleteAttachmentAction(
