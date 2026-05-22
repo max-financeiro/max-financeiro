@@ -12,6 +12,11 @@
  */
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { headers } from 'next/headers';
+// SERVICE_ROLE: audit.log_event é restrito a service_role (P2-05) — o client
+// do usuário não pode mais chamá-lo. O id da sessão é repassado como
+// p_user_id pra preservar a atribuição do evento.
+// eslint-disable-next-line no-restricted-imports
+import { getAdminClient } from '@/lib/supabase/admin';
 
 export type AuditEvent = {
   action: string; // 'login.success', 'payment.requested', 'supplier.bank_changed', ...
@@ -40,7 +45,12 @@ export async function logAuditEvent(supabase: AnySupabase, event: AuditEvent): P
       undefined;
     const userAgent = headersList.get('user-agent') ?? undefined;
 
-    await supabase.schema('audit').rpc('log_event', {
+    // Atribuição: id da sessão do usuário (service_role não tem auth.uid()).
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+
+    await (getAdminClient() as unknown as AnySupabase).schema('audit').rpc('log_event', {
       p_action: event.action,
       p_entity_type: event.entityType,
       p_entity_id: event.entityId,
@@ -49,6 +59,7 @@ export async function logAuditEvent(supabase: AnySupabase, event: AuditEvent): P
       p_organization_id: event.organizationId,
       p_ip_address: ip,
       p_user_agent: userAgent,
+      p_user_id: user?.id ?? null,
     });
   } catch (err) {
     // Não bloqueia o fluxo principal — só loga
