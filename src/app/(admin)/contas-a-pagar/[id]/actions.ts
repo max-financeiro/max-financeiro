@@ -10,8 +10,12 @@ import { getAdminClient } from '@/lib/supabase/admin';
 import { createClient } from '@/lib/supabase/server';
 import { logAuditEvent } from '@/lib/auth/audit';
 import { getPaymentProvider } from '@/lib/payments/factory';
-import { getInterStatementPdf } from '@/lib/inter/statement';
-import { InterApiError } from '@/lib/inter/errors';
+import {
+  buildInterReceiptPdf,
+  getInterPixEndToEnd,
+  findEndToEnd,
+  type InterReceiptData,
+} from '@/lib/inter/receipt';
 
 const TAG = '[cap-action]';
 
@@ -687,11 +691,13 @@ export async function addAttachmentAction(
 }
 
 // ============================================================
-// PUXAR COMPROVANTE DO INTER — anexa o comprovante de pagamento
-// direto da API do Banco Inter, sem entrar no internet banking.
+// PUXAR COMPROVANTE DO INTER — gera e anexa o comprovante INDIVIDUAL
+// da transação, sem precisar entrar no internet banking.
 //
-// O Inter não expõe comprovante por transação; o documento oficial
-// é o extrato (PDF) da data de liquidação — que contém o pagamento.
+// A API do Inter não devolve comprovante por transação, então o
+// comprovante é GERADO (PDF) a partir dos dados reais e oficiais do
+// pagamento — registro em `payments`, CAP de origem e o ID end-to-end
+// confirmado pelo Inter (consulta PIX + webhook de liquidação).
 // ============================================================
 const InterReceiptSchema = z.object({
   payment_id: z.string().uuid(),
@@ -725,7 +731,9 @@ export async function attachInterReceiptAction(
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const { data: payment } = await (admin as any)
     .from('payments')
-    .select('id, payable_id, provider, provider_status, provider_request_id, settled_at, created_at')
+    .select(
+      'id, payable_id, provider, provider_status, provider_request_id, amount, payment_method, settled_at, created_at',
+    )
     .eq('id', parsed.data.payment_id)
     .maybeSingle();
   if (!payment) return { ok: false, error: 'Pagamento não encontrado' };
@@ -738,10 +746,15 @@ export async function attachInterReceiptAction(
       error: 'O comprovante só pode ser puxado depois que o Inter confirmar o pagamento.',
     };
   }
+  if (!payment.provider_request_id) {
+    return { ok: false, error: 'Pagamento sem identificador da transação no Inter.' };
+  }
 
   const { data: cap } = await admin
     .from('accounts_payable')
-    .select('id, organization_id, reference_number')
+    .select(
+      'id, organization_id, reference_number, description, pix_key, boleto_barcode, business_partners(legal_name, trade_name, document), organizations(legal_name, trade_name)',
+    )
     .eq('id', payment.payable_id)
     .maybeSingle();
   if (!cap) return { ok: false, error: 'CAP não encontrada' };
@@ -759,24 +772,57 @@ export async function attachInterReceiptAction(
     return { ok: true, message: 'O comprovante já estava anexado nesta CAP.' };
   }
 
-  // Data de liquidação → intervalo do extrato (comprovante)
-  const settledDate = String(payment.settled_at ?? payment.created_at).slice(0, 10);
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(settledDate)) {
-    return { ok: false, error: 'Data de liquidação inválida no pagamento.' };
+  const paidAt = String(payment.settled_at ?? payment.created_at);
+
+  // ID end-to-end oficial: consulta o Inter; se falhar, cai pro payload
+  // do webhook de liquidação já gravado.
+  let endToEndId: string | null = null;
+  if (payment.payment_method === 'pix') {
+    endToEndId = await getInterPixEndToEnd(payment.provider_request_id);
+    if (!endToEndId) {
+      // `inter_webhook_events` não está nos types gerados — cast localizado.
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const { data: evt } = await (admin as any)
+        .from('inter_webhook_events')
+        .select('payload')
+        .eq('payment_id', payment.id)
+        .order('processed_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      if (evt?.payload) endToEndId = findEndToEnd(evt.payload);
+    }
   }
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const supplier = cap.business_partners as any;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const org = cap.organizations as any;
+
+  const receiptData: InterReceiptData = {
+    method: payment.payment_method,
+    amount: Number(payment.amount),
+    paidAt,
+    beneficiaryName:
+      supplier?.legal_name ?? supplier?.trade_name ?? '(beneficiário não informado)',
+    beneficiaryDocument: supplier?.document ?? null,
+    pixKey: cap.pix_key ?? null,
+    boletoLine: cap.boleto_barcode ?? null,
+    codigoSolicitacao: payment.provider_request_id,
+    endToEndId,
+    capReference: cap.reference_number ?? null,
+    capDescription: cap.description ?? null,
+    payerName: org?.legal_name ?? org?.trade_name ?? 'Maxfem',
+  };
 
   let pdf: Buffer;
   try {
-    pdf = await getInterStatementPdf(settledDate, settledDate);
+    pdf = await buildInterReceiptPdf(receiptData);
   } catch (err) {
-    console.error(TAG, 'inter_receipt_fetch_failed', err);
-    const msg =
-      err instanceof InterApiError
-        ? err.message
-        : err instanceof Error
-          ? err.message
-          : 'erro desconhecido';
-    return { ok: false, error: `Não consegui puxar o comprovante no Inter: ${msg}` };
+    console.error(TAG, 'inter_receipt_build_failed', err);
+    return {
+      ok: false,
+      error: `Não consegui gerar o comprovante: ${err instanceof Error ? err.message : 'erro desconhecido'}`,
+    };
   }
 
   const { error: uploadErr } = await admin.storage
@@ -786,7 +832,7 @@ export async function attachInterReceiptAction(
     return { ok: false, error: `Falha ao salvar o comprovante: ${uploadErr.message}` };
   }
 
-  const fileName = `Comprovante Inter ${settledDate.split('-').reverse().join('-')}.pdf`;
+  const fileName = `Comprovante Inter ${cap.reference_number ?? paidAt.slice(0, 10)}.pdf`;
   // `source: 'inter'` adicionado pela migration 20260521000006 — ainda não
   // está nos types gerados do Supabase, então cast localizado.
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -814,14 +860,15 @@ export async function attachInterReceiptAction(
     entityId: cap.id,
     afterState: {
       payment_id: payment.id,
-      provider_request_id: payment.provider_request_id ?? null,
-      settled_date: settledDate,
+      provider_request_id: payment.provider_request_id,
+      end_to_end_id: endToEndId,
+      paid_at: paidAt,
     },
     organizationId: cap.organization_id,
   });
 
   revalidatePath(`/contas-a-pagar/${cap.id}`);
-  return { ok: true, message: 'Comprovante do Inter anexado na CAP.' };
+  return { ok: true, message: 'Comprovante individual do Inter gerado e anexado na CAP.' };
 }
 
 export async function deleteAttachmentAction(
