@@ -1,5 +1,6 @@
 'use client';
 
+import Link from 'next/link';
 import { useActionState, useTransition } from 'react';
 import { approveOrphanAction, rejectOrphanAction, type ActionState } from './actions';
 
@@ -52,8 +53,13 @@ export function OrphanInvoiceRow({ nf, empresa }: { nf: Nf; empresa: string }) {
       </td>
       <td className="px-4 py-2 text-xs text-neutral-600">{empresa}</td>
       <td className="px-4 py-2 font-mono text-xs">
-        {nf.number}
-        {nf.series && <span className="text-neutral-400">/{nf.series}</span>}
+        <Link
+          href={`/caixa/nfs-orfas/${nf.id}`}
+          className="text-maxfem-pink hover:underline"
+        >
+          {nf.number}
+          {nf.series && <span className="text-neutral-400">/{nf.series}</span>}
+        </Link>
       </td>
       <td className="px-4 py-2">{nf.issuer_name}</td>
       <td className="px-4 py-2 font-mono text-xs">{nf.issuer_document}</td>
@@ -64,6 +70,12 @@ export function OrphanInvoiceRow({ nf, empresa }: { nf: Nf; empresa: string }) {
       <td className="px-4 py-2 text-right space-x-2">
         {message && <span className="text-xs text-emerald-700 mr-2">{message}</span>}
         {error && <span className="text-xs text-red-700 mr-2">{error}</span>}
+        <Link
+          href={`/caixa/nfs-orfas/${nf.id}`}
+          className="text-xs text-neutral-600 hover:text-maxfem-pink underline mr-1"
+        >
+          ver
+        </Link>
         <button
           type="button"
           disabled={pending}

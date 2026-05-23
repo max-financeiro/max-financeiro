@@ -1,5 +1,6 @@
 'use client';
 
+import Link from 'next/link';
 import { useRef } from 'react';
 
 /**
@@ -89,12 +90,12 @@ export function OrphanFiltersForm({
         Filtrar
       </button>
       {hasFilter && (
-        <a
+        <Link
           href="/caixa/nfs-orfas"
           className="px-3 py-1.5 rounded-md text-sm text-neutral-600 hover:text-maxfem-pink"
         >
           Limpar
-        </a>
+        </Link>
       )}
       {countLabel && (
         <span className="ml-auto text-xs text-neutral-500">{countLabel}</span>
