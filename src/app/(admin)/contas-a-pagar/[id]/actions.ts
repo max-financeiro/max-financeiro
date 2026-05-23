@@ -415,18 +415,42 @@ export async function requestPaymentAction(
   // Dados bancários: snapshot gravado no CAP na criação. Obrigatórios em
   // produção (Inter); no mock aceitamos placeholders pra não travar o dev.
   let pixKey = cap.pix_key ?? '';
-  const pixKeyType = (cap.pix_key_type ?? 'cpf') as
+  let pixKeyType = (cap.pix_key_type ?? 'cpf') as
     | 'cpf'
     | 'cnpj'
     | 'email'
     | 'phone'
     | 'random';
   let digitableLine = (cap.boleto_barcode ?? '').replace(/\D/g, '');
+  let pixSource: 'cap_snapshot' | 'supplier_current' = 'cap_snapshot';
+
+  // Fallback: se a CAP não tem snapshot de PIX mas o fornecedor JÁ TEM
+  // dados bancários cadastrados, usa esses. O cooldown anti-fraude de
+  // 24h em mudança bancária já cobre o risco — usar a chave atual aqui
+  // é o comportamento esperado pelo usuário.
+  if (method === 'pix' && !isMock && !pixKey && cap.supplier_id) {
+    const encryptionKey = process.env.BANK_ENCRYPTION_KEY;
+    if (encryptionKey) {
+      // RPC decrypt_supplier_bank_details ainda não está nos types gerados — cast.
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const { data: bankRows } = await (admin as any).rpc('decrypt_supplier_bank_details', {
+        p_supplier_id: cap.supplier_id,
+        p_encryption_key: encryptionKey,
+      });
+      const row = Array.isArray(bankRows) ? bankRows[0] : bankRows;
+      if (row?.pix_key) {
+        pixKey = String(row.pix_key).trim();
+        pixKeyType = (row.pix_key_type ?? 'cnpj') as typeof pixKeyType;
+        pixSource = 'supplier_current';
+      }
+    }
+  }
 
   if (method === 'pix' && !isMock && !pixKey) {
     return {
       ok: false,
-      error: 'CAP sem chave PIX — preencha os dados bancários antes de enviar pro banco.',
+      error:
+        'Sem chave PIX disponível — nem na CAP nem no cadastro do fornecedor. Cadastre os dados bancários do fornecedor antes de enviar pro banco.',
     };
   }
   if (method === 'boleto' && !isMock && !/^\d{47,48}$/.test(digitableLine)) {
@@ -554,6 +578,7 @@ export async function requestPaymentAction(
         amount: cap.amount,
         scheduled_for: scheduledDate ?? null,
         requested_by_role: profile.role,
+        pix_source: pixSource,
       },
       organizationId: cap.organization_id,
     });
