@@ -1,198 +1,430 @@
 'use client';
 
 import { useState } from 'react';
-import { v4 as uuidv4 } from 'uuid';
+import Link from 'next/link';
 import { createClient } from '@/lib/supabase/client';
+
+type Step = 'idle' | 'extracting' | 'preview' | 'submitting' | 'success';
+
+interface Extracted {
+  source: string;
+  documentType: string;
+  confidence: 'high' | 'medium' | 'low';
+  issuer?: { document?: string; name?: string };
+  recipient?: { document?: string; name?: string };
+  amount?: number;
+  dueDate?: string;
+  issueDate?: string;
+  documentNumber?: string;
+  accessKey?: string;
+  barcode?: string;
+  description?: string;
+  notes?: string;
+}
+
+interface FormFields {
+  number: string;
+  series: string;
+  access_key: string;
+  issue_date: string;
+  issuer_document: string;
+  issuer_name: string;
+  recipient_document: string;
+  recipient_name: string;
+  total_amount: string;
+  document_type: 'nfe' | 'nfse' | 'nfce' | 'cte' | 'other';
+  description: string;
+}
+
+const EMPTY: FormFields = {
+  number: '',
+  series: '',
+  access_key: '',
+  issue_date: '',
+  issuer_document: '',
+  issuer_name: '',
+  recipient_document: '',
+  recipient_name: '',
+  total_amount: '',
+  document_type: 'nfe',
+  description: '',
+};
 
 export default function EnviarNFePage() {
   const [xmlFile, setXmlFile] = useState<File | null>(null);
   const [pdfFile, setPdfFile] = useState<File | null>(null);
-  const [loading, setLoading] = useState(false);
+  const [step, setStep] = useState<Step>('idle');
   const [error, setError] = useState<string | null>(null);
-  const [success, setSuccess] = useState(false);
+  const [extracted, setExtracted] = useState<Extracted | null>(null);
+  const [fields, setFields] = useState<FormFields>(EMPTY);
+  const [orgId, setOrgId] = useState<string | null>(null);
+  const [createdId, setCreatedId] = useState<string | null>(null);
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!xmlFile) {
-      setError('Selecione o arquivo XML da NF-e');
+  const supabase = createClient();
+
+  async function pickFile(kind: 'xml' | 'pdf', f: File | null) {
+    if (kind === 'xml') setXmlFile(f);
+    else setPdfFile(f);
+    setError(null);
+  }
+
+  async function runExtract() {
+    const file = xmlFile ?? pdfFile;
+    if (!file) {
+      setError('Selecione um arquivo XML ou PDF primeiro.');
       return;
     }
-
-    setLoading(true);
+    setStep('extracting');
     setError(null);
-    setSuccess(false);
-
     try {
-      // Busca organization_id do fornecedor
-      const supabase = createClient();
+      // Carrega filial do fornecedor primeiro
       const { data: { user } } = await supabase.auth.getUser();
-      if (!user) throw new Error('Não autenticado');
-
+      if (!user) throw new Error('Sessão expirada');
       const { data: supplier } = await supabase
         .from('business_partners')
         .select('group_id')
         .eq('supplier_user_id', user.id)
         .maybeSingle();
-
       if (!supplier) throw new Error('Fornecedor não encontrado');
+      setOrgId(supplier.group_id);
 
-      const formData = new FormData();
-      formData.append('xml', xmlFile);
-      if (pdfFile) formData.append('pdf', pdfFile);
-      formData.append('organization_id', supplier.group_id);
-
-      const idempotencyKey = uuidv4();
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session) throw new Error('Sessão expirada');
-
-      const res = await fetch(
-        `${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/upload-fiscal-document`,
-        {
-          method: 'POST',
-          headers: {
-            'Authorization': `Bearer ${session.access_token}`,
-            'Idempotency-Key': idempotencyKey,
-          },
-          body: formData,
-        }
-      );
-
+      // Chama o extract — XML tem prioridade (parser determinístico),
+      // PDF roda IA
+      const fd = new FormData();
+      fd.append('file', file);
+      const res = await fetch('/api/portal/nf-e/extract', { method: 'POST', body: fd });
       const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Erro ao analisar documento');
+      const ex: Extracted = data.extracted;
+      setExtracted(ex);
 
-      if (!res.ok) {
-        throw new Error(data.error || 'Erro ao enviar NF-e');
-      }
-
-      setSuccess(true);
-      setXmlFile(null);
-      setPdfFile(null);
-
-      // Reset form
-      const form = e.target as HTMLFormElement;
-      form.reset();
+      // Pré-popula form com o que a IA achou
+      setFields({
+        number: ex.documentNumber ?? '',
+        series: '',
+        access_key: ex.accessKey ?? '',
+        issue_date: ex.issueDate ?? '',
+        issuer_document: digits(ex.issuer?.document ?? ''),
+        issuer_name: ex.issuer?.name ?? '',
+        recipient_document: digits(ex.recipient?.document ?? ''),
+        recipient_name: ex.recipient?.name ?? '',
+        total_amount: ex.amount ? String(ex.amount.toFixed(2)) : '',
+        document_type:
+          ex.documentType === 'nfe'
+            ? 'nfe'
+            : ex.documentType === 'nfce'
+              ? 'nfce'
+              : 'other',
+        description: ex.description ?? '',
+      });
+      setStep('preview');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Erro desconhecido');
-    } finally {
-      setLoading(false);
+      setStep('idle');
     }
-  };
+  }
+
+  async function submit() {
+    if (!orgId) {
+      setError('Filial não detectada — recarregue a página.');
+      return;
+    }
+    setStep('submitting');
+    setError(null);
+    try {
+      const fd = new FormData();
+      if (xmlFile) fd.append('xml', xmlFile);
+      if (pdfFile) fd.append('pdf', pdfFile);
+      fd.append('data', JSON.stringify({ organization_id: orgId, ...fields }));
+      const res = await fetch('/api/portal/nf-e/submit', { method: 'POST', body: fd });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Erro ao enviar');
+      setCreatedId(data.id);
+      setStep('success');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Erro desconhecido');
+      setStep('preview');
+    }
+  }
+
+  function reset() {
+    setXmlFile(null);
+    setPdfFile(null);
+    setExtracted(null);
+    setFields(EMPTY);
+    setError(null);
+    setCreatedId(null);
+    setStep('idle');
+  }
+
+  // ---------- RENDER ----------
+
+  if (step === 'success') {
+    return (
+      <PortalShell title="Enviar Nota Fiscal">
+        <div className="bg-green-50 border border-green-200 rounded-lg p-6 text-center">
+          <h2 className="font-display text-xl font-semibold text-green-900">
+            NF-e enviada com sucesso
+          </h2>
+          <p className="text-sm text-green-800 mt-2">
+            ID interno: <code className="bg-white px-2 py-0.5 rounded border border-green-200">{createdId}</code>
+          </p>
+          <p className="text-sm text-green-800 mt-2">
+            O time financeiro foi notificado. Acompanhe em <Link href="/portal/nf-e/lista" className="underline font-medium">Minhas NFs</Link>.
+          </p>
+          <div className="flex gap-3 justify-center mt-5">
+            <button onClick={reset} className="btn-primary">
+              Enviar outra
+            </button>
+            <Link href="/portal" className="btn-secondary">Voltar ao portal</Link>
+          </div>
+        </div>
+      </PortalShell>
+    );
+  }
 
   return (
-    <div className="max-w-2xl mx-auto p-6">
-      <h1 className="text-2xl font-semibold text-pink-600 mb-6">
-        Enviar Nota Fiscal
-      </h1>
+    <PortalShell title="Enviar Nota Fiscal">
+      {/* ---- Passo 1: upload ---- */}
+      <section className="space-y-4">
+        <header className="flex items-center justify-between">
+          <h2 className="font-display text-lg font-semibold text-maxfem-ink">
+            1 · Anexe os arquivos
+          </h2>
+          <span className="text-xs text-neutral-500">XML, PDF ou ambos · máx 10MB cada</span>
+        </header>
 
-      <form onSubmit={handleSubmit} className="space-y-6">
-        {/* Drag-drop zone pra XML */}
-        <div className="border-2 border-dashed border-neutral-300 rounded-lg p-8 text-center hover:border-pink-500 transition-colors">
-          <input
-            type="file"
+        <div className="grid md:grid-cols-2 gap-3">
+          <FileDrop
+            label="XML da NF-e"
+            hint="opcional se enviar PDF"
             accept=".xml,text/xml,application/xml"
-            onChange={(e) => setXmlFile(e.target.files?.[0] || null)}
-            className="hidden"
-            id="xml-upload"
+            file={xmlFile}
+            onPick={(f) => pickFile('xml', f)}
+            disabled={step === 'extracting' || step === 'submitting'}
           />
-          <label htmlFor="xml-upload" className="cursor-pointer">
-            {xmlFile ? (
-              <div>
-                <p className="text-sm text-neutral-700 font-medium">{xmlFile.name}</p>
-                <p className="text-xs text-neutral-500 mt-1">
-                  {(xmlFile.size / 1024).toFixed(1)} KB
-                </p>
-              </div>
-            ) : (
-              <div>
-                <svg
-                  className="mx-auto h-12 w-12 text-neutral-400"
-                  stroke="currentColor"
-                  fill="none"
-                  viewBox="0 0 48 48"
-                  aria-hidden="true"
-                >
-                  <path
-                    d="M28 8H12a4 4 0 00-4 4v20m32-12v8m0 0v8a4 4 0 01-4 4H12a4 4 0 01-4-4v-4m32-4l-3.172-3.172a4 4 0 00-5.656 0L28 28M8 32l9.172-9.172a4 4 0 015.656 0L28 28m0 0l4 4m4-24h8m-4-4v8m-12 4h.02"
-                    strokeWidth={2}
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                  />
-                </svg>
-                <p className="mt-2 text-sm text-neutral-600">
-                  Clique para selecionar o <span className="font-medium">XML da NF-e</span>
-                </p>
-                <p className="text-xs text-neutral-500 mt-1">
-                  Máximo 5MB
-                </p>
-              </div>
-            )}
-          </label>
-        </div>
-
-        {/* Upload opcional de PDF (boleto) */}
-        <div className="border border-neutral-200 rounded-lg p-4 hover:border-pink-500 transition-colors">
-          <input
-            type="file"
+          <FileDrop
+            label="PDF (boleto / DANFE)"
+            hint="a IA vai ler e sugerir os campos"
             accept=".pdf,application/pdf"
-            onChange={(e) => setPdfFile(e.target.files?.[0] || null)}
-            className="hidden"
-            id="pdf-upload"
+            file={pdfFile}
+            onPick={(f) => pickFile('pdf', f)}
+            disabled={step === 'extracting' || step === 'submitting'}
           />
-          <label htmlFor="pdf-upload" className="cursor-pointer flex items-center gap-2">
-            <svg
-              className="h-5 w-5 text-neutral-500"
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13"
-              />
-            </svg>
-            <span className="text-sm text-neutral-600">
-              {pdfFile ? (
-                <span className="font-medium">{pdfFile.name}</span>
-              ) : (
-                'Anexar boleto (opcional)'
-              )}
-            </span>
-          </label>
         </div>
 
-        {error && (
-          <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg">
-            <p className="font-medium">Erro ao enviar NF-e</p>
-            <p className="text-sm mt-1">{error}</p>
+        {step !== 'preview' && (
+          <button
+            type="button"
+            onClick={runExtract}
+            disabled={(!xmlFile && !pdfFile) || step === 'extracting'}
+            className="btn-primary w-full"
+          >
+            {step === 'extracting' ? 'Analisando documento...' : 'Analisar e preencher'}
+          </button>
+        )}
+      </section>
+
+      {/* ---- Passo 2: preview + edição (continua visível durante o submit) ---- */}
+      {(step === 'preview' || step === 'submitting') && extracted && (
+        <section className="mt-8 space-y-4">
+          <header className="flex items-start justify-between gap-4">
+            <div>
+              <h2 className="font-display text-lg font-semibold text-maxfem-ink">
+                2 · Confirme os dados detectados
+              </h2>
+              <p className="text-xs text-neutral-500 mt-1">
+                Identificado como <strong className="text-maxfem-ink">{labelDocType(extracted.documentType)}</strong>
+                {' '}via <strong>{labelProvider(extracted.source)}</strong>
+                {' '}· confiança <ConfidenceBadge level={extracted.confidence} />
+              </p>
+              {extracted.notes && (
+                <p className="text-xs text-amber-700 mt-2 bg-amber-50 border border-amber-200 rounded px-2 py-1">
+                  IA: {extracted.notes}
+                </p>
+              )}
+            </div>
+            <button type="button" onClick={reset} className="text-xs text-neutral-500 hover:text-maxfem-pink underline">
+              Recomeçar
+            </button>
+          </header>
+
+          <div className="grid md:grid-cols-2 gap-4">
+            <Field label="Tipo de documento" required>
+              <select
+                value={fields.document_type}
+                onChange={(e) => setFields({ ...fields, document_type: e.target.value as FormFields['document_type'] })}
+                className="input-field"
+              >
+                <option value="nfe">NF-e</option>
+                <option value="nfse">NFS-e</option>
+                <option value="nfce">NFC-e</option>
+                <option value="cte">CT-e</option>
+                <option value="other">Outro (boleto, fatura...)</option>
+              </select>
+            </Field>
+            <Field label="Número" required>
+              <input value={fields.number} onChange={(e) => setFields({ ...fields, number: e.target.value })} className="input-field" />
+            </Field>
+            <Field label="Série">
+              <input value={fields.series} onChange={(e) => setFields({ ...fields, series: e.target.value })} className="input-field" />
+            </Field>
+            <Field label="Data de emissão" required>
+              <input type="date" value={fields.issue_date} onChange={(e) => setFields({ ...fields, issue_date: e.target.value })} className="input-field" />
+            </Field>
+            <Field label="Chave de acesso (NF-e, 44 dígitos)" full>
+              <input value={fields.access_key} onChange={(e) => setFields({ ...fields, access_key: e.target.value })} className="input-field font-mono text-xs" />
+            </Field>
+            <Field label="CNPJ emissor (você)" required>
+              <input value={fields.issuer_document} onChange={(e) => setFields({ ...fields, issuer_document: digits(e.target.value) })} className="input-field" />
+            </Field>
+            <Field label="Razão social emissor" required>
+              <input value={fields.issuer_name} onChange={(e) => setFields({ ...fields, issuer_name: e.target.value })} className="input-field" />
+            </Field>
+            <Field label="CNPJ destinatário (filial Maxfem)" required>
+              <input value={fields.recipient_document} onChange={(e) => setFields({ ...fields, recipient_document: digits(e.target.value) })} className="input-field" />
+            </Field>
+            <Field label="Razão social destinatário">
+              <input value={fields.recipient_name} onChange={(e) => setFields({ ...fields, recipient_name: e.target.value })} className="input-field" />
+            </Field>
+            <Field label="Valor total (R$)" required>
+              <input type="number" step="0.01" value={fields.total_amount} onChange={(e) => setFields({ ...fields, total_amount: e.target.value })} className="input-field" />
+            </Field>
+            <Field label="Descrição" full>
+              <input value={fields.description} onChange={(e) => setFields({ ...fields, description: e.target.value })} className="input-field" />
+            </Field>
+          </div>
+
+          <button
+            type="button"
+            onClick={submit}
+            disabled={step === 'submitting'}
+            className="btn-primary w-full"
+          >
+            {step === 'submitting' ? 'Enviando...' : 'Confirmar e enviar NF'}
+          </button>
+        </section>
+      )}
+
+      {error && (
+        <div className="mt-6 bg-rose-50 border border-rose-200 rounded-lg p-4">
+          <p className="text-sm font-semibold text-rose-900">Não foi possível</p>
+          <p className="text-sm text-rose-800 mt-1">{error}</p>
+        </div>
+      )}
+    </PortalShell>
+  );
+}
+
+// ---------- helpers ----------
+
+function digits(s: string): string {
+  return s.replace(/\D/g, '');
+}
+
+function labelDocType(t: string): string {
+  return ({ nfe: 'NF-e', boleto: 'Boleto', invoice: 'Fatura', receipt: 'Recibo', contract: 'Contrato', other: 'Outro' } as Record<string, string>)[t] ?? t;
+}
+
+function labelProvider(s: string): string {
+  if (s === 'nfe_xml') return 'parser XML (NF-e)';
+  if (s.startsWith('gemini')) return 'IA Google Gemini';
+  if (s.startsWith('claude')) return 'IA Claude';
+  return s;
+}
+
+// ---------- componentes ----------
+
+function PortalShell({ title, children }: { title: string; children: React.ReactNode }) {
+  return (
+    <main className="min-h-screen bg-maxfem-cream">
+      <header className="bg-white border-b border-neutral-200">
+        <div className="max-w-3xl mx-auto px-4 h-14 flex items-center justify-between">
+          <Link href="/portal" className="font-display text-lg font-semibold text-maxfem-pink hover:opacity-80">
+            Portal Maxfem
+          </Link>
+          <form action="/auth/logout" method="POST">
+            <button type="submit" className="text-sm text-neutral-600 hover:text-maxfem-pink">
+              Sair
+            </button>
+          </form>
+        </div>
+      </header>
+      <section className="max-w-3xl mx-auto px-4 py-8">
+        <nav className="text-xs text-neutral-500 mb-2">
+          <Link href="/portal" className="hover:text-maxfem-pink">Portal</Link>
+          {' · '}
+          <span>{title}</span>
+        </nav>
+        <h1 className="font-display text-2xl font-semibold text-maxfem-ink mb-6">{title}</h1>
+        {children}
+      </section>
+    </main>
+  );
+}
+
+function FileDrop({
+  label, hint, accept, file, onPick, disabled,
+}: {
+  label: string; hint: string; accept: string;
+  file: File | null; onPick: (f: File | null) => void; disabled?: boolean;
+}) {
+  const id = `file-${label.replace(/\W+/g, '-').toLowerCase()}`;
+  return (
+    <div className={[
+      'rounded-lg border-2 border-dashed p-4 transition-colors',
+      file ? 'border-maxfem-pink bg-pink-50/40' : 'border-neutral-300 hover:border-maxfem-pink/60',
+      disabled ? 'opacity-50 pointer-events-none' : '',
+    ].join(' ')}>
+      <input
+        type="file"
+        accept={accept}
+        onChange={(e) => onPick(e.target.files?.[0] ?? null)}
+        id={id}
+        className="hidden"
+      />
+      <label htmlFor={id} className="cursor-pointer block">
+        <div className="flex items-center justify-between">
+          <div>
+            <div className="text-sm font-semibold text-maxfem-ink">{label}</div>
+            <div className="text-xs text-neutral-500 mt-0.5">{hint}</div>
+          </div>
+          {file ? (
+            <button type="button" onClick={(e) => { e.preventDefault(); onPick(null); }} className="text-xs text-neutral-500 hover:text-rose-600 underline">
+              remover
+            </button>
+          ) : (
+            <span className="text-xs text-maxfem-pink font-semibold">selecionar →</span>
+          )}
+        </div>
+        {file && (
+          <div className="mt-2 text-xs text-neutral-700">
+            <strong>{file.name}</strong>
+            <span className="text-neutral-500"> · {(file.size / 1024).toFixed(1)} KB</span>
           </div>
         )}
-
-        {success && (
-          <div className="bg-green-50 border border-green-200 text-green-700 px-4 py-3 rounded-lg">
-            <p className="font-medium">NF-e enviada com sucesso!</p>
-            <p className="text-sm mt-1">Aguarde a análise do time financeiro.</p>
-          </div>
-        )}
-
-        <button
-          type="submit"
-          disabled={loading || !xmlFile}
-          className="w-full bg-pink-600 text-white px-4 py-3 rounded-lg hover:bg-pink-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors font-medium"
-        >
-          {loading ? 'Enviando...' : 'Enviar NF-e'}
-        </button>
-      </form>
-
-      <div className="mt-8 p-4 bg-blue-50 border border-blue-200 rounded-lg">
-        <h3 className="text-sm font-medium text-blue-900 mb-2">ℹ️ Informações Importantes</h3>
-        <ul className="text-sm text-blue-800 space-y-1">
-          <li>• O arquivo XML deve ser da NF-e emitida</li>
-          <li>• O CNPJ destinatário deve corresponder à filial selecionada</li>
-          <li>• O PDF do boleto é opcional mas recomendado</li>
-          <li>• Após o envio, a NF será analisada pelo time financeiro</li>
-        </ul>
-      </div>
+      </label>
     </div>
   );
+}
+
+function Field({
+  label, required, full, children,
+}: {
+  label: string; required?: boolean; full?: boolean; children: React.ReactNode;
+}) {
+  return (
+    <div className={full ? 'md:col-span-2' : ''}>
+      <label className="block text-xs font-semibold text-neutral-700 mb-1">
+        {label}{required && <span className="text-rose-600 ml-0.5">*</span>}
+      </label>
+      {children}
+    </div>
+  );
+}
+
+function ConfidenceBadge({ level }: { level: 'high' | 'medium' | 'low' }) {
+  const cls = level === 'high' ? 'bg-emerald-100 text-emerald-800' : level === 'medium' ? 'bg-amber-100 text-amber-800' : 'bg-rose-100 text-rose-800';
+  const label = level === 'high' ? 'alta' : level === 'medium' ? 'média' : 'baixa';
+  return <span className={`inline-block ml-1 px-1.5 py-0.5 text-[10px] font-semibold rounded ${cls}`}>{label}</span>;
 }
