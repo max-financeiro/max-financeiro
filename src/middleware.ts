@@ -38,8 +38,10 @@ const PUBLIC_ROUTES = [
 const AUTH_FLOW_ROUTES = ['/auth/2fa/enroll', '/auth/2fa/verify', '/auth/logout'];
 
 // Portal do fornecedor: requer user autenticado mas NÃO requer AAL2 (TOTP).
-// Suppliers usam magic link sem 2FA. Pages /portal/* validam role='supplier' por dentro.
-const PORTAL_ROUTES = ['/portal'];
+// Suppliers usam magic link sem 2FA. Pages /portal/* validam role='supplier'
+// por dentro. /api/portal/* tambem isento de 2FA pelo mesmo motivo — cada
+// rota faz seu proprio check de role.
+const PORTAL_ROUTES = ['/portal', '/api/portal'];
 
 export const config = {
   matcher: [

@@ -370,12 +370,53 @@ function FileDrop({
   file: File | null; onPick: (f: File | null) => void; disabled?: boolean;
 }) {
   const id = `file-${label.replace(/\W+/g, '-').toLowerCase()}`;
+  const [dragging, setDragging] = useState(false);
+
+  // Aceita extensão (".xml") e mime types (",application/xml" etc) na mesma
+  // string que o <input accept=...>. Compara contra o arquivo arrastado.
+  function fileMatchesAccept(f: File): boolean {
+    const tokens = accept.split(',').map((s) => s.trim().toLowerCase()).filter(Boolean);
+    if (!tokens.length) return true;
+    const nameLower = f.name.toLowerCase();
+    const typeLower = (f.type || '').toLowerCase();
+    return tokens.some((t) => {
+      if (t.startsWith('.')) return nameLower.endsWith(t);
+      if (t.endsWith('/*')) return typeLower.startsWith(t.slice(0, -1));
+      return typeLower === t;
+    });
+  }
+
+  function handleDrop(e: React.DragEvent<HTMLLabelElement>) {
+    e.preventDefault();
+    e.stopPropagation();
+    setDragging(false);
+    if (disabled) return;
+    const f = e.dataTransfer.files?.[0];
+    if (!f) return;
+    if (!fileMatchesAccept(f)) {
+      // ignora silenciosamente — outro slot pode aceitar
+      return;
+    }
+    onPick(f);
+  }
+
   return (
-    <div className={[
-      'rounded-lg border-2 border-dashed p-4 transition-colors',
-      file ? 'border-maxfem-pink bg-pink-50/40' : 'border-neutral-300 hover:border-maxfem-pink/60',
-      disabled ? 'opacity-50 pointer-events-none' : '',
-    ].join(' ')}>
+    <label
+      htmlFor={id}
+      onDragOver={(e) => { e.preventDefault(); e.stopPropagation(); if (!disabled) setDragging(true); }}
+      onDragEnter={(e) => { e.preventDefault(); e.stopPropagation(); if (!disabled) setDragging(true); }}
+      onDragLeave={(e) => { e.preventDefault(); e.stopPropagation(); setDragging(false); }}
+      onDrop={handleDrop}
+      className={[
+        'block cursor-pointer rounded-lg border-2 border-dashed p-4 transition-colors',
+        dragging
+          ? 'border-maxfem-pink bg-pink-50 ring-2 ring-maxfem-pink/30'
+          : file
+            ? 'border-maxfem-pink bg-pink-50/40'
+            : 'border-neutral-300 hover:border-maxfem-pink/60',
+        disabled ? 'opacity-50 pointer-events-none' : '',
+      ].join(' ')}
+    >
       <input
         type="file"
         accept={accept}
@@ -383,28 +424,32 @@ function FileDrop({
         id={id}
         className="hidden"
       />
-      <label htmlFor={id} className="cursor-pointer block">
-        <div className="flex items-center justify-between">
-          <div>
-            <div className="text-sm font-semibold text-maxfem-ink">{label}</div>
-            <div className="text-xs text-neutral-500 mt-0.5">{hint}</div>
+      <div className="flex items-center justify-between">
+        <div>
+          <div className="text-sm font-semibold text-maxfem-ink">{label}</div>
+          <div className="text-xs text-neutral-500 mt-0.5">
+            {dragging ? 'solte aqui pra carregar' : hint}
           </div>
-          {file ? (
-            <button type="button" onClick={(e) => { e.preventDefault(); onPick(null); }} className="text-xs text-neutral-500 hover:text-rose-600 underline">
-              remover
-            </button>
-          ) : (
-            <span className="text-xs text-maxfem-pink font-semibold">selecionar →</span>
-          )}
         </div>
-        {file && (
-          <div className="mt-2 text-xs text-neutral-700">
-            <strong>{file.name}</strong>
-            <span className="text-neutral-500"> · {(file.size / 1024).toFixed(1)} KB</span>
-          </div>
+        {file ? (
+          <button
+            type="button"
+            onClick={(e) => { e.preventDefault(); e.stopPropagation(); onPick(null); }}
+            className="text-xs text-neutral-500 hover:text-rose-600 underline"
+          >
+            remover
+          </button>
+        ) : (
+          <span className="text-xs text-maxfem-pink font-semibold">clique ou arraste →</span>
         )}
-      </label>
-    </div>
+      </div>
+      {file && (
+        <div className="mt-2 text-xs text-neutral-700">
+          <strong>{file.name}</strong>
+          <span className="text-neutral-500"> · {(file.size / 1024).toFixed(1)} KB</span>
+        </div>
+      )}
+    </label>
   );
 }
 
