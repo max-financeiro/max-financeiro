@@ -98,6 +98,26 @@ describe('Sprint 4b — segurança do upload de XML NF-e', () => {
     // pelo anti-XXE; erros de estrutura viram exceções específicas de campo.
     await expect(parseNFe(Buffer.from(NFE_VALIDA_MIN, 'utf8'))).resolves.toBeDefined();
   });
+
+  it('preserva CNPJs com leading zero como string (regressão CNPJ vira número)', async () => {
+    const xml = NFE_VALIDA_MIN
+      .replace('<CNPJ>11111111000111</CNPJ>', '<CNPJ>00000000000191</CNPJ>')
+      .replace('<CNPJ>22222222000222</CNPJ>', '<CNPJ>00123456000189</CNPJ>');
+    const res = await parseNFe(Buffer.from(xml, 'utf8'));
+    expect(typeof res.issuer.document).toBe('string');
+    expect(res.issuer.document).toBe('00000000000191');
+    expect(typeof res.recipient.document).toBe('string');
+    expect(res.recipient.document).toBe('00123456000189');
+    // .replace() funciona em string mas explodia em number — guarda esse comportamento
+    expect(() => res.recipient.document.replace(/\D/g, '')).not.toThrow();
+    expect(res.recipient.document.replace(/\D/g, '')).toHaveLength(14);
+  });
+
+  it('preserva chave de acesso 44 dígitos como string (estouraria MAX_SAFE_INTEGER)', async () => {
+    const res = await parseNFe(Buffer.from(NFE_VALIDA_MIN, 'utf8'));
+    expect(typeof res.accessKey).toBe('string');
+    expect(res.accessKey).toHaveLength(44);
+  });
 });
 
 describe('Sprint 4b — antivírus (MockProvider)', () => {

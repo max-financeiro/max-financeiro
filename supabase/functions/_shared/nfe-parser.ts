@@ -33,15 +33,19 @@ export async function parseNFe(xmlBuffer: Uint8Array): Promise<ParsedNFe> {
     throw new Error(`XML rejeitado: ${xxeCheck.reason}`);
   }
 
-  // Parse com fast-xml-parser (anti-XXE hardened)
+  // Parse com fast-xml-parser (anti-XXE hardened).
+  // parseTagValue=false: CNPJ "00000000000191" vira número 191 (perde
+  // leading zeros + .replace() quebra); chave de acesso 44 dígitos estoura
+  // MAX_SAFE_INTEGER. Conversão pra número fica explícita via parseFloat
+  // (vNF, vProd, vUnCom). coerceStr() embaixo é defesa extra.
   const parser = new XMLParser({
     ignoreAttributes: false,
     attributeNamePrefix: '@_',
-    parseAttributeValue: true,
+    parseAttributeValue: false,
     trimValues: true,
     processEntities: false,
     allowBooleanAttributes: true,
-    parseTagValue: true,
+    parseTagValue: false,
     ignoreDeclaration: true,
     ignorePiTags: true,
     stopNodes: ['*:script', '*:SCRIPT'],
@@ -93,21 +97,30 @@ export async function parseNFe(xmlBuffer: Uint8Array): Promise<ParsedNFe> {
 
   return {
     accessKey,
-    number: nfe.ide.nNF || '',
-    series: nfe.ide.serie || '',
+    number: coerceStr(nfe.ide.nNF),
+    series: coerceStr(nfe.ide.serie),
     issueDate: parseNFeDate(nfe.ide.dhEmi || nfe.ide.dEmi),
     issuer: {
-      document: nfe.emit.CNPJ || nfe.emit.CPF || '',
-      name: nfe.emit.xNome || '',
+      document: coerceStr(nfe.emit.CNPJ ?? nfe.emit.CPF),
+      name: coerceStr(nfe.emit.xNome),
     },
     recipient: {
-      document: nfe.dest.CNPJ || nfe.dest.CPF || '',
-      name: nfe.dest.xNome || '',
+      document: coerceStr(nfe.dest.CNPJ ?? nfe.dest.CPF),
+      name: coerceStr(nfe.dest.xNome),
     },
     totalAmount,
     items,
     rawData: parsed,
   };
+}
+
+// Garante string mesmo se parseTagValue/parseAttributeValue alterar config
+// ou se algum campo escapar (e.g. número solto).
+function coerceStr(v: unknown): string {
+  if (v == null) return '';
+  if (typeof v === 'string') return v;
+  if (typeof v === 'number' || typeof v === 'boolean') return String(v);
+  return '';
 }
 
 function parseNFeDate(dateStr: string): Date {

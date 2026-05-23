@@ -40,14 +40,19 @@ export async function parseNFe(xmlBuffer: Buffer): Promise<ParsedNFe> {
   }
 
   // 2. Parse com fast-xml-parser (anti-XXE hardened)
+  // parseTagValue=false: NF-e tem MUITO campo numérico que precisa ficar
+  // como string (CNPJ "00000000000191" vira número 191 com leading zeros
+  // perdidos; chave de acesso 44 dígitos estoura MAX_SAFE_INTEGER). A
+  // conversão explícita pra número fica nos campos certos via parseFloat
+  // (vNF, vProd, vUnCom) embaixo. Ver coerceStr() pra defesa extra.
   const parser = new XMLParser({
     ignoreAttributes: false,
     attributeNamePrefix: '@_',
-    parseAttributeValue: true,
+    parseAttributeValue: false,
     trimValues: true,
     processEntities: false,        // CRÍTICO: bloqueia ENTITY expansion
     allowBooleanAttributes: true,
-    parseTagValue: true,
+    parseTagValue: false,
     ignoreDeclaration: true,       // ignora <?xml?>
     ignorePiTags: true,            // ignora <?target?>
     cdataPropName: '__cdata',
@@ -108,23 +113,39 @@ export async function parseNFe(xmlBuffer: Buffer): Promise<ParsedNFe> {
     throw new Error('Valor total da NF-e é zero ou inválido');
   }
 
+  // Normaliza todo campo textual pra string — fast-xml-parser com
+  // parseTagValue=true converte "00000000000191" pra número 191 e quebra
+  // quem chama .replace() depois. coerceStr() blinda contra isso.
   return {
     accessKey,
-    number: nfe.ide.nNF || '',
-    series: nfe.ide.serie || '',
+    number: coerceStr(nfe.ide.nNF),
+    series: coerceStr(nfe.ide.serie),
     issueDate: parseNFeDate(nfe.ide.dhEmi || nfe.ide.dEmi),
     issuer: {
-      document: nfe.emit.CNPJ || nfe.emit.CPF || '',
-      name: nfe.emit.xNome || '',
+      document: coerceStr(nfe.emit.CNPJ ?? nfe.emit.CPF),
+      name: coerceStr(nfe.emit.xNome),
     },
     recipient: {
-      document: nfe.dest.CNPJ || nfe.dest.CPF || '',
-      name: nfe.dest.xNome || '',
+      document: coerceStr(nfe.dest.CNPJ ?? nfe.dest.CPF),
+      name: coerceStr(nfe.dest.xNome),
     },
     totalAmount,
     items,
     rawData: parsed,  // Salva JSON completo pra auditoria
   };
+}
+
+/**
+ * Garante que o valor é uma string. Preserva zeros à esquerda quando o
+ * parser converteu pra número (caso típico: CNPJ "00000000000191" → 191).
+ * Não pad-eia — quem precisar do CNPJ com 14 dígitos faz a normalização
+ * downstream com .padStart(14, '0').replace(/\D/g, '').
+ */
+function coerceStr(v: unknown): string {
+  if (v == null) return '';
+  if (typeof v === 'string') return v;
+  if (typeof v === 'number' || typeof v === 'boolean') return String(v);
+  return '';
 }
 
 /**
