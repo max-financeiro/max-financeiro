@@ -107,14 +107,17 @@ serve(async (req) => {
       .eq('id', organizationId)
       .maybeSingle();
 
-    const orgCnpjDigits = (org?.cnpj ?? '').replace(/\D/g, '');
-    const recipientCnpjDigits = (parsed.recipient.document ?? '').replace(/\D/g, '');
+    // Belt-and-suspenders: parser ja devolve string desde 75fd5cb, mas
+    // String() aqui blinda contra qualquer regressao downstream.
+    const orgCnpjDigits = String(org?.cnpj ?? '').replace(/\D/g, '');
+    const recipientCnpjDigits = String(parsed.recipient.document ?? '').replace(/\D/g, '');
 
     if (!org || !orgCnpjDigits || orgCnpjDigits !== recipientCnpjDigits) {
       const response = {
         error: 'CNPJ destinatário não corresponde à filial selecionada',
         expected: orgCnpjDigits || null,
         received: recipientCnpjDigits,
+        _v: 'edge-2026-05-23-string-coerce',
       };
       await storeIdempotencyResponse(supabase, idempotencyKey, 400, response);
       return jsonResponse(response, 400);
