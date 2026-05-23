@@ -208,6 +208,42 @@ export async function POST(req: Request) {
     .select('id')
     .single();
 
+  // Conflito 23505 (unique constraint) = NF JÁ está no sistema (típico:
+  // chegou via Focus NFe antes do fornecedor mandar pelo portal). Em vez
+  // de erro, mergamos: anexamos o XML/PDF do fornecedor no registro
+  // existente e devolvemos sucesso com flag `alreadyExisted`.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  if ((insertErr as any)?.code === '23505' && parsedData.access_key) {
+    const { data: existing } = await admin
+      .from('fiscal_documents')
+      .select('id, source, status, xml_storage_path, pdf_storage_path')
+      .eq('organization_id', org.id)
+      .eq('access_key', parsedData.access_key)
+      .maybeSingle();
+    if (existing) {
+      // Só sobrescreve se o existente NÃO tinha o arquivo (não destrói anexo prévio)
+      const update: { xml_storage_path?: string; pdf_storage_path?: string } = {};
+      if (xmlPath && !existing.xml_storage_path) update.xml_storage_path = xmlPath;
+      if (pdfPath && !existing.pdf_storage_path) update.pdf_storage_path = pdfPath;
+      if (Object.keys(update).length > 0) {
+        await admin.from('fiscal_documents').update(update).eq('id', existing.id);
+      } else {
+        // Não precisa atualizar — descarta os uploads
+        const paths = [xmlPath, pdfPath].filter(Boolean) as string[];
+        if (paths.length) await admin.storage.from('fiscal-documents').remove(paths);
+      }
+      return Response.json({
+        ok: true,
+        id: existing.id,
+        alreadyExisted: true,
+        prevSource: existing.source,
+        prevStatus: existing.status,
+        merged: Object.keys(update),
+        _v: 'portal-route-2026-05-23-merge',
+      });
+    }
+  }
+
   if (insertErr) {
     // Tenta limpar arquivos órfãos best-effort
     const paths = [xmlPath, pdfPath].filter(Boolean) as string[];
@@ -215,7 +251,7 @@ export async function POST(req: Request) {
     return Response.json({ error: `Erro ao gravar NF: ${insertErr.message}` }, { status: 500 });
   }
 
-  return Response.json({ ok: true, id: doc.id, _v: 'portal-route-2026-05-23' });
+  return Response.json({ ok: true, id: doc.id, _v: 'portal-route-2026-05-23-merge' });
 }
 
 function safeName(name: string): string {

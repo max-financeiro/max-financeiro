@@ -58,6 +58,7 @@ export default function EnviarNFePage() {
   const [extracted, setExtracted] = useState<Extracted | null>(null);
   const [fields, setFields] = useState<FormFields>(EMPTY);
   const [createdId, setCreatedId] = useState<string | null>(null);
+  const [alreadyExisted, setAlreadyExisted] = useState(false);
 
   const supabase = createClient();
 
@@ -130,6 +131,7 @@ export default function EnviarNFePage() {
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Erro ao enviar');
       setCreatedId(data.id);
+      setAlreadyExisted(!!data.alreadyExisted);
       setStep('success');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Erro desconhecido');
@@ -144,6 +146,7 @@ export default function EnviarNFePage() {
     setFields(EMPTY);
     setError(null);
     setCreatedId(null);
+    setAlreadyExisted(false);
     setStep('idle');
   }
 
@@ -152,23 +155,41 @@ export default function EnviarNFePage() {
   if (step === 'success') {
     return (
       <PortalShell title="Enviar Nota Fiscal">
-        <div className="bg-green-50 border border-green-200 rounded-lg p-6 text-center">
-          <h2 className="font-display text-xl font-semibold text-green-900">
-            NF-e enviada com sucesso
-          </h2>
-          <p className="text-sm text-green-800 mt-2">
-            ID interno: <code className="bg-white px-2 py-0.5 rounded border border-green-200">{createdId}</code>
-          </p>
-          <p className="text-sm text-green-800 mt-2">
-            O time financeiro foi notificado. Acompanhe em <Link href="/portal/nf-e/lista" className="underline font-medium">Minhas NFs</Link>.
-          </p>
-          <div className="flex gap-3 justify-center mt-5">
-            <button onClick={reset} className="btn-primary">
-              Enviar outra
-            </button>
-            <Link href="/portal" className="btn-secondary">Voltar ao portal</Link>
+        {alreadyExisted ? (
+          <div className="bg-amber-50 border border-amber-200 rounded-lg p-6">
+            <h2 className="font-display text-xl font-semibold text-amber-900">
+              Esta NF já estava no sistema
+            </h2>
+            <p className="text-sm text-amber-800 mt-2">
+              A nota já tinha sido capturada automaticamente pela integração com a Receita
+              (Focus NFe). Anexamos os arquivos que você enviou ao registro existente e
+              confirmamos o recebimento.
+            </p>
+            <p className="text-sm text-amber-800 mt-2">
+              ID interno: <code className="bg-white px-2 py-0.5 rounded border border-amber-200">{createdId}</code>
+            </p>
+            <div className="flex gap-3 mt-5">
+              <button onClick={reset} className="btn-primary">Enviar outra</button>
+              <Link href="/portal/nf-e/lista" className="btn-secondary">Ver minhas NFs</Link>
+            </div>
           </div>
-        </div>
+        ) : (
+          <div className="bg-green-50 border border-green-200 rounded-lg p-6 text-center">
+            <h2 className="font-display text-xl font-semibold text-green-900">
+              NF-e enviada com sucesso
+            </h2>
+            <p className="text-sm text-green-800 mt-2">
+              ID interno: <code className="bg-white px-2 py-0.5 rounded border border-green-200">{createdId}</code>
+            </p>
+            <p className="text-sm text-green-800 mt-2">
+              O time financeiro foi notificado. Acompanhe em <Link href="/portal/nf-e/lista" className="underline font-medium">Minhas NFs</Link>.
+            </p>
+            <div className="flex gap-3 justify-center mt-5">
+              <button onClick={reset} className="btn-primary">Enviar outra</button>
+              <Link href="/portal" className="btn-secondary">Voltar ao portal</Link>
+            </div>
+          </div>
+        )}
       </PortalShell>
     );
   }
