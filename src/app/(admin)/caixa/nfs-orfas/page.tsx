@@ -1,6 +1,7 @@
 import { createClient } from '@/lib/supabase/server';
 import { redirect } from 'next/navigation';
 import { OrphanInvoiceRow } from './OrphanInvoiceRow';
+import { OrphanFiltersForm } from './OrphanFiltersForm';
 import { SyncFocusButton } from './SyncFocusButton';
 
 export const dynamic = 'force-dynamic';
@@ -81,74 +82,19 @@ export default async function NfsOrfasPage({
         <SyncFocusButton />
       </header>
 
-      {/* Filtros */}
-      <form
-        method="GET"
-        className="mb-4 flex flex-wrap items-end gap-3 bg-white border border-neutral-200 rounded-lg p-4"
-      >
-        <div>
-          <label htmlFor="org" className="block text-xs uppercase text-neutral-500 mb-1">
-            Empresa
-          </label>
-          <select
-            id="org"
-            name="org"
-            defaultValue={orgFilter ?? 'all'}
-            className="rounded-md border border-neutral-300 px-3 py-1.5 text-sm focus:border-pink-500 focus:outline-none"
-          >
-            <option value="all">Todas</option>
-            {empresas.map((e) => (
-              <option key={e.id} value={e.id}>
-                {e.label}
-              </option>
-            ))}
-          </select>
-        </div>
-        <div>
-          <label htmlFor="from" className="block text-xs uppercase text-neutral-500 mb-1">
-            Emissão de
-          </label>
-          <input
-            id="from"
-            name="from"
-            type="date"
-            defaultValue={fromFilter ?? ''}
-            className="rounded-md border border-neutral-300 px-3 py-1.5 text-sm focus:border-pink-500 focus:outline-none"
-          />
-        </div>
-        <div>
-          <label htmlFor="to" className="block text-xs uppercase text-neutral-500 mb-1">
-            até
-          </label>
-          <input
-            id="to"
-            name="to"
-            type="date"
-            defaultValue={toFilter ?? ''}
-            className="rounded-md border border-neutral-300 px-3 py-1.5 text-sm focus:border-pink-500 focus:outline-none"
-          />
-        </div>
-        <button
-          type="submit"
-          className="px-4 py-1.5 rounded-md bg-maxfem-pink text-white text-sm font-medium hover:bg-pink-600 transition"
-        >
-          Filtrar
-        </button>
-        {hasFilter && (
-          <a
-            href="/caixa/nfs-orfas"
-            className="px-3 py-1.5 rounded-md text-sm text-neutral-600 hover:text-maxfem-pink"
-          >
-            Limpar
-          </a>
-        )}
-        {orphans && orphans.length > 0 && (
-          <span className="ml-auto text-xs text-neutral-500">
-            {orphans.length} nota(s) ·{' '}
-            {totalValor.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
-          </span>
-        )}
-      </form>
+      {/* Filtros — auto-aplicam ao mudar data/empresa */}
+      <OrphanFiltersForm
+        empresas={empresas}
+        orgFilter={orgFilter}
+        fromFilter={fromFilter}
+        toFilter={toFilter}
+        hasFilter={hasFilter}
+        countLabel={
+          orphans && orphans.length > 0
+            ? `${orphans.length} nota(s) · ${totalValor.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}`
+            : null
+        }
+      />
 
       {!orphans || orphans.length === 0 ? (
         <div className="bg-white rounded-lg border border-neutral-200 p-12 text-center">
