@@ -26,7 +26,9 @@ export const runtime = 'nodejs';
 const MAX_BYTES = 10 * 1024 * 1024;
 
 const DataSchema = z.object({
-  organization_id: z.string().uuid(),
+  // organization_id removido: o sistema acha a filial pelo CNPJ
+  // destinatário (mais robusto — não depende do supplier.group_id
+  // estar apontando pra filial certa).
   document_type: z.enum(['nfe', 'nfse', 'nfce', 'cte', 'other']).default('other'),
   number: z.string().trim().min(1).max(60),
   series: z.string().trim().max(20).optional().or(z.literal('')),
@@ -112,27 +114,33 @@ export async function POST(req: Request) {
     }
   }
 
-  // Valida que organização pertence ao mesmo grupo do fornecedor (segurança)
+  // Acha a filial Maxfem pelo CNPJ destinatário (NF foi pra essa CNPJ).
+  // Aceita company (matriz) ou branch (filial). O grupo (type='group')
+  // não tem CNPJ — então nunca casa, o que está correto.
   const admin = getAdminClient();
+  const recipientCnpjDigits = String(parsedData.recipient_document).replace(/\D/g, '');
+  if (!recipientCnpjDigits) {
+    return Response.json(
+      { error: 'CNPJ destinatário ausente nos dados confirmados' },
+      { status: 400 },
+    );
+  }
   const { data: org } = await admin
     .from('organizations')
     .select('id, cnpj, parent_id, type, legal_name')
-    .eq('id', parsedData.organization_id)
+    .eq('cnpj', recipientCnpjDigits)
+    .in('type', ['company', 'branch'])
+    .is('deleted_at', null)
     .maybeSingle();
-  if (!org) return Response.json({ error: 'Filial não encontrada' }, { status: 404 });
-
-  // CNPJ destinatário deve bater com o CNPJ da filial selecionada
-  const orgCnpjDigits = String(org.cnpj ?? '').replace(/\D/g, '');
-  const recipientCnpjDigits = String(parsedData.recipient_document).replace(/\D/g, '');
-  if (!orgCnpjDigits || orgCnpjDigits !== recipientCnpjDigits) {
+  if (!org) {
     return Response.json(
       {
-        error: 'CNPJ destinatário não corresponde à filial selecionada',
-        expected: orgCnpjDigits || null,
-        received: recipientCnpjDigits,
-        _v: 'portal-route-2026-05-23',
+        error:
+          'Filial não encontrada para esse CNPJ destinatário. Confirme se o CNPJ está correto ou contate o financeiro Maxfem pra cadastrar a filial.',
+        cnpj: recipientCnpjDigits,
+        _v: 'portal-route-2026-05-23-lookup-by-cnpj',
       },
-      { status: 400 },
+      { status: 404 },
     );
   }
 
@@ -178,7 +186,7 @@ export async function POST(req: Request) {
     .from('fiscal_documents')
     .insert({
       id: docId,
-      organization_id: parsedData.organization_id,
+      organization_id: org.id,
       direction: 'inbound',
       document_type: parsedData.document_type,
       access_key: parsedData.access_key || null,

@@ -57,7 +57,6 @@ export default function EnviarNFePage() {
   const [error, setError] = useState<string | null>(null);
   const [extracted, setExtracted] = useState<Extracted | null>(null);
   const [fields, setFields] = useState<FormFields>(EMPTY);
-  const [orgId, setOrgId] = useState<string | null>(null);
   const [createdId, setCreatedId] = useState<string | null>(null);
 
   const supabase = createClient();
@@ -77,16 +76,10 @@ export default function EnviarNFePage() {
     setStep('extracting');
     setError(null);
     try {
-      // Carrega filial do fornecedor primeiro
+      // Confirma sessão (a rota /api/portal/nf-e/extract valida role
+      // = supplier). A filial é descoberta no submit pelo CNPJ destinatário.
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error('Sessão expirada');
-      const { data: supplier } = await supabase
-        .from('business_partners')
-        .select('group_id')
-        .eq('supplier_user_id', user.id)
-        .maybeSingle();
-      if (!supplier) throw new Error('Fornecedor não encontrado');
-      setOrgId(supplier.group_id);
 
       // Chama o extract — XML tem prioridade (parser determinístico),
       // PDF roda IA
@@ -125,17 +118,14 @@ export default function EnviarNFePage() {
   }
 
   async function submit() {
-    if (!orgId) {
-      setError('Filial não detectada — recarregue a página.');
-      return;
-    }
     setStep('submitting');
     setError(null);
     try {
       const fd = new FormData();
       if (xmlFile) fd.append('xml', xmlFile);
       if (pdfFile) fd.append('pdf', pdfFile);
-      fd.append('data', JSON.stringify({ organization_id: orgId, ...fields }));
+      // organization_id é descoberto no servidor pelo CNPJ destinatário
+      fd.append('data', JSON.stringify(fields));
       const res = await fetch('/api/portal/nf-e/submit', { method: 'POST', body: fd });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Erro ao enviar');
