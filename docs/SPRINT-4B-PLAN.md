@@ -1242,7 +1242,7 @@ describe('RLS Supplier Isolation', () => {
 
 Antes de considerar Sprint 4b completa:
 
-- [ ] **Funcional:**
+- [ ] **Funcional (smoke manual a ser executado por Thiago/Anderson):**
   - [ ] Fornecedor loga no portal, vê página "Enviar NF-e"
   - [ ] Upload de XML válido → registro criado em `fiscal_documents` com status `received`
   - [ ] Parser extrai: access_key, issuer, recipient, total_amount, items
@@ -1252,29 +1252,33 @@ Antes de considerar Sprint 4b completa:
   - [ ] Status `validated` → trigger cria CAP automaticamente
   - [ ] Página "Minhas NFs" lista NFs com status correto
   - [ ] Fornecedor A não vê NFs do fornecedor B (RLS bloqueia)
-  - [ ] Atualização de dados bancários → cooldown 24h + email confirmação
+  - [x] Atualização de dados bancários → cooldown 24h + email confirmação dupla *(2026-05-23 — `sendBankChangeNotifications` em `src/lib/email/bank-change-notification.ts`, ligado no portal e admin)*
 
-- [ ] **Rate Limit:**
+- [ ] **Rate Limit (smoke manual):**
   - [ ] 51º upload em 1h → 429 Too Many Requests
   - [ ] 6º magic link em 1h → 429 Too Many Requests
 
-- [ ] **Idempotência:**
+- [ ] **Idempotência (smoke manual):**
   - [ ] Upload com mesmo `Idempotency-Key` 2x → primeira retorna 201, segunda retorna resposta cacheada
   - [ ] Upload em paralelo com mesmo key → uma retorna 201, outra retorna 409 Conflict
 
-- [ ] **Segurança:**
-  - [ ] XML > 5MB → rejeitado
-  - [ ] XML com `<!DOCTYPE SYSTEM` → rejeitado
-  - [ ] XML com `<script>` → rejeitado
-  - [ ] PDF com vírus (EICAR test file) → rejeitado se antivírus habilitado
+- [x] **Segurança (cobertos por `tests/security/portal-upload-security.test.ts` — 2026-05-23):**
+  - [x] XML > 5MB → rejeitado
+  - [x] XML com `<!DOCTYPE SYSTEM` → rejeitado
+  - [x] XML com `<!DOCTYPE PUBLIC` → rejeitado
+  - [x] XML com `<!ENTITY` → rejeitado (XXE clássico)
+  - [x] XML com `<script>` → rejeitado
+  - [x] XML com `javascript:` / `data:text/html` / `file://` → rejeitado
+  - [x] PDF com vírus (EICAR test file) → rejeitado pelo MockAntivirusProvider
 
-- [ ] **Tests:**
-  - [ ] `npm run test:rls` passa com 100% coverage em supplier isolation
-  - [ ] Edge function `upload-fiscal-document` testada manualmente com Postman
+- [x] **Tests (2026-05-23):**
+  - [x] `npm run test:rls` passa — 7 testes, 0 falhas (fix: dotenv+ws no setup, schema fixtures, asserções alinhadas com comportamento Supabase)
+  - [x] `tests/security/portal-upload-security.test.ts` — 14 testes verdes (XXE, EICAR, parser feliz e malicioso)
+  - [ ] Edge function `upload-fiscal-document` testada manualmente com Postman *(smoke manual)*
 
-- [ ] **Documentação:**
-  - [ ] `docs/API.md` atualizado com endpoint `/functions/v1/upload-fiscal-document`
-  - [ ] `.env.example` atualizado com `ENABLE_ANTIVIRUS`, `CLOUDMERSIVE_API_KEY`
+- [x] **Documentação (2026-05-23):**
+  - [x] `docs/API.md` criado — webhooks, edge functions, server actions críticas, RPCs, envs
+  - [x] `.env.example` atualizado — `BANK_ENCRYPTION_KEY`, `PAYMENT_PROVIDER`, `FINANCEIRO_NOTIFY_EMAIL` (além dos `ENABLE_ANTIVIRUS`/`CLOUDMERSIVE_API_KEY` que já estavam)
 
 ---
 

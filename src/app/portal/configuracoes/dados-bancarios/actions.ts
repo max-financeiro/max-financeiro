@@ -7,6 +7,7 @@ import { createClient } from '@/lib/supabase/server';
 // eslint-disable-next-line no-restricted-imports
 import { getAdminClient } from '@/lib/supabase/admin';
 import { logAuditEvent } from '@/lib/auth/audit';
+import { sendBankChangeNotifications } from '@/lib/email/bank-change-notification';
 
 const TAG = 'portal/dados-bancarios/actions';
 
@@ -45,7 +46,7 @@ export async function updateBankDetails(_prev: State, formData: FormData): Promi
 
   const { data: supplier, error: supplierError } = await supabase
     .from('business_partners')
-    .select('id, bank_details_last_changed_at')
+    .select('id, legal_name, document, email, bank_details_last_changed_at')
     .eq('supplier_user_id', user.id)
     .maybeSingle();
 
@@ -98,7 +99,7 @@ export async function updateBankDetails(_prev: State, formData: FormData): Promi
   // O service_role bypassa RLS mas a RPC tem own checks; auth.uid() preserva
   // identidade do fornecedor pra o audit/log WORM.
   const admin = getAdminClient();
-  const { error: rpcError } = await admin.rpc('update_supplier_bank_details', {
+  const { data: rpcData, error: rpcError } = await admin.rpc('update_supplier_bank_details', {
     p_supplier_id: supplier.id,
     p_encryption_key: encryptionKey,
     p_changed_by_role: 'supplier',
@@ -120,6 +121,10 @@ export async function updateBankDetails(_prev: State, formData: FormData): Promi
     return { ok: false, error: `Erro ao salvar alteração: ${rpcError.message}` };
   }
 
+  const rpcResult = (Array.isArray(rpcData) ? rpcData[0] : rpcData) as
+    | { effective_at?: string; changed_to_new_account?: boolean }
+    | null;
+
   await logAuditEvent(supabase, {
     action: 'portal.bank_details.changed',
     entityType: 'business_partners',
@@ -127,7 +132,23 @@ export async function updateBankDetails(_prev: State, formData: FormData): Promi
     afterState: { changed_by_role: 'supplier' },
   });
 
-  // TODO Sprint 5+: enviar email de confirmação dupla via Resend
+  // Confirmação dupla: notifica fornecedor + time financeiro Maxfem.
+  // Best-effort — falha não derruba a action; o usuário já viu sucesso.
+  try {
+    await sendBankChangeNotifications({
+      supplierEmail: supplier.email ?? user.email ?? null,
+      supplierLegalName: supplier.legal_name ?? '(fornecedor)',
+      supplierDocument: supplier.document ?? '',
+      changedByRole: 'supplier',
+      effectiveAt: rpcResult?.effective_at ?? new Date(Date.now() + 24 * 3600 * 1000).toISOString(),
+      occurredAt: new Date().toISOString(),
+      changedToNewAccount: rpcResult?.changed_to_new_account ?? true,
+      reason: d.reason,
+      ipAddress: ip,
+    });
+  } catch (emailErr) {
+    console.warn(TAG, 'notification_failed', emailErr);
+  }
 
   return { ok: true };
 }

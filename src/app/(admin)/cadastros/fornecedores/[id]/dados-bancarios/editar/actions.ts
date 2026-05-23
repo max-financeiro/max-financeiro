@@ -10,6 +10,7 @@ import { getAdminClient } from '@/lib/supabase/admin';
 import { createClient } from '@/lib/supabase/server';
 import { logAuditEvent } from '@/lib/auth/audit';
 import { isValidBRDocument, normalizeDocument } from '@/lib/document';
+import { sendBankChangeNotifications } from '@/lib/email/bank-change-notification';
 
 /**
  * Update de dados bancários — fluxo crítico anti-fraude.
@@ -148,7 +149,7 @@ export async function updateBankDetailsAction(
   // Verifica supplier visível pelo user
   const { data: supplier, error: supErr } = await supabase
     .from('business_partners')
-    .select('id, group_id, legal_name')
+    .select('id, group_id, legal_name, document, email')
     .eq('id', parsed.data.supplier_id)
     .maybeSingle();
   if (supErr || !supplier) {
@@ -238,6 +239,24 @@ export async function updateBankDetailsAction(
     },
     organizationId: supplier.group_id,
   });
+
+  // Confirmação dupla: notifica fornecedor + time financeiro Maxfem.
+  // Best-effort — falha não derruba a action.
+  try {
+    await sendBankChangeNotifications({
+      supplierEmail: supplier.email ?? null,
+      supplierLegalName: supplier.legal_name ?? '(fornecedor)',
+      supplierDocument: supplier.document ?? '',
+      changedByRole: profile.role,
+      effectiveAt: result?.effective_at ?? new Date(Date.now() + 24 * 3600 * 1000).toISOString(),
+      occurredAt: new Date().toISOString(),
+      changedToNewAccount: result?.changed_to_new_account ?? true,
+      reason: parsed.data.reason,
+      ipAddress: ip,
+    });
+  } catch (emailErr) {
+    console.warn(TAG, 'notification_failed', emailErr);
+  }
 
   revalidatePath(`/cadastros/fornecedores/${parsed.data.supplier_id}`);
   return { ok: true, supplierId: parsed.data.supplier_id };

@@ -26,13 +26,13 @@ describe('RLS Supplier Isolation — Sprint 4b', () => {
   beforeAll(async () => {
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
-    // Cria organização de teste
+    // Cria organização de teste (schema atual: type=group + legal_name)
     const { data: org, error: orgError } = await supabase
       .from('organizations')
       .insert({
-        name: 'Test Org RLS',
-        cnpj: '00000000000191',
-        plan_tier: 'starter',
+        type: 'group',
+        legal_name: `Test Org RLS ${Date.now()}`,
+        cnpj: `${Date.now()}`.slice(-14).padStart(14, '0'),
       })
       .select()
       .single();
@@ -94,11 +94,12 @@ describe('RLS Supplier Isolation — Sprint 4b', () => {
     if (bpBError) throw new Error(`Erro ao criar BP B: ${bpBError.message}`);
     supplierBId = bpB.id;
 
-    // Cria perfis de usuário (role=supplier)
-    await supabase.from('user_profiles').insert([
-      { user_id: supplierAUser.id, role: 'supplier' },
-      { user_id: supplierBUser.id, role: 'supplier' },
+    // Cria perfis de usuário (role=supplier). full_name é NOT NULL.
+    const { error: profErr } = await supabase.from('user_profiles').insert([
+      { user_id: supplierAUser.id, role: 'supplier', full_name: 'Fornecedor A Test' },
+      { user_id: supplierBUser.id, role: 'supplier', full_name: 'Fornecedor B Test' },
     ]);
+    if (profErr) throw new Error(`Erro ao criar user_profiles: ${profErr.message}`);
 
     // Cria uma NF do fornecedor A
     const { data: fiscalDoc, error: fiscalError } = await supabase
@@ -184,14 +185,24 @@ describe('RLS Supplier Isolation — Sprint 4b', () => {
       password: 'Test123!@#',
     });
 
-    const { error } = await supabase
+    const { data: updated } = await supabase
       .from('fiscal_documents')
       .update({ status: 'cancelled' })
-      .eq('id', fiscalDocAId);
+      .eq('id', fiscalDocAId)
+      .select('id');
 
-    // RLS deve bloquear UPDATE — error ou data vazio
-    // Supabase retorna error se RLS bloquear
-    expect(error).not.toBeNull();
+    // RLS bloqueia: o row é invisível pro B, então o WHERE casa 0 rows.
+    // Supabase devolve data=[] sem erro. O importante: nada foi alterado.
+    expect(updated ?? []).toHaveLength(0);
+
+    // Confirma com service_role que o status original não mudou.
+    const admin = createClient(supabaseUrl, supabaseServiceKey);
+    const { data: untouched } = await admin
+      .from('fiscal_documents')
+      .select('status')
+      .eq('id', fiscalDocAId)
+      .single();
+    expect(untouched?.status).toBe('received');
   });
 
   it('Fornecedor B não consegue DELETE em NF do fornecedor A', async () => {
@@ -204,13 +215,23 @@ describe('RLS Supplier Isolation — Sprint 4b', () => {
       password: 'Test123!@#',
     });
 
-    const { error } = await supabase
+    const { data: deleted } = await supabase
       .from('fiscal_documents')
       .delete()
-      .eq('id', fiscalDocAId);
+      .eq('id', fiscalDocAId)
+      .select('id');
 
-    // RLS deve bloquear DELETE
-    expect(error).not.toBeNull();
+    // Mesmo padrão: RLS torna o row invisível, DELETE não casa nada.
+    expect(deleted ?? []).toHaveLength(0);
+
+    // Confirma com service_role que a NF continua existindo.
+    const admin = createClient(supabaseUrl, supabaseServiceKey);
+    const { data: stillThere } = await admin
+      .from('fiscal_documents')
+      .select('id')
+      .eq('id', fiscalDocAId)
+      .maybeSingle();
+    expect(stillThere?.id).toBe(fiscalDocAId);
   });
 
   afterAll(async () => {

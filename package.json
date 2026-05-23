@@ -48,6 +48,7 @@
     "@types/qrcode": "^1.5.5",
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
+    "@types/ws": "^8.18.1",
     "@vitest/coverage-v8": "^2.1.5",
     "autoprefixer": "^10.4.20",
     "dotenv": "^17.4.2",
@@ -59,6 +60,6 @@
     "tailwindcss": "^3.4.15",
     "typescript": "^5.6.3",
     "vitest": "^2.1.5",
-    "ws": "^8.20.1"
+    "ws": "^8.21.0"
   }
 }
