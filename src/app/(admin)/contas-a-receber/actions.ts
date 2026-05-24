@@ -8,6 +8,7 @@ import { createClient } from '@/lib/supabase/server';
 // eslint-disable-next-line no-restricted-imports
 import { getAdminClient } from '@/lib/supabase/admin';
 import { logAuditEvent } from '@/lib/auth/audit';
+import { syncBlingReceivables } from '@/lib/bling/sync-receivables';
 
 const TAG = '[ar-action]';
 
@@ -196,4 +197,47 @@ export async function cancelArAction(_prev: ActionState, formData: FormData): Pr
 
   revalidatePath('/contas-a-receber');
   return { ok: true, message: `${ar.reference_number} cancelada.` };
+}
+
+// ============================================================
+// SYNC BLING — pull NF-es de saída e cria AR automaticamente
+// ============================================================
+import { z as zSync } from 'zod';
+const SyncBlingSchema = zSync.object({
+  days: zSync.coerce.number().int().min(1).max(60).default(7),
+});
+
+export async function syncBlingArAction(
+  _prev: ActionState,
+  formData: FormData,
+): Promise<ActionState> {
+  const parsed = SyncBlingSchema.safeParse({ days: formData.get('days') ?? undefined });
+  if (!parsed.success) return { ok: false, error: 'Parâmetro days inválido' };
+  const auth = await requireWriter();
+  if (!auth.ok) return { ok: false, error: auth.error };
+
+  const today = new Date().toISOString().slice(0, 10);
+  const start = new Date(Date.now() - parsed.data.days * 86_400_000).toISOString().slice(0, 10);
+
+  try {
+    const admin = getAdminClient();
+    const r = await syncBlingReceivables(admin, { startDate: start, endDate: today });
+    revalidatePath('/contas-a-receber');
+    const msg =
+      `Sync Bling ${parsed.data.days}d — ${r.totalFetched} NF puxadas; ` +
+      `${r.arsCreated} AR criadas, ${r.arsExisted} já existiam, ` +
+      `${r.fiscalDocsCreated} NFs novas, ${r.customersCreated} clientes novos. ` +
+      `${r.skippedNoOrg > 0 ? `${r.skippedNoOrg} NF de outras empresas ignoradas.` : ''}`;
+    if (r.errors > 0) {
+      return {
+        ok: false,
+        error: `${msg} ${r.errors} erro(s): ${(r.errorDetails ?? []).slice(0, 2).join('; ')}`,
+      };
+    }
+    return { ok: true, message: msg };
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    console.error(TAG, 'sync_bling_failed', msg, err);
+    return { ok: false, error: `Falha no sync Bling: ${msg}` };
+  }
 }

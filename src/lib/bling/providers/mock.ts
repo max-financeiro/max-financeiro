@@ -77,4 +77,10 @@ export class MockBlingProvider implements BlingProvider {
   async listInboundInvoices(): Promise<BlingPage<BlingInvoice>> {
     return { items: MOCK_INVOICES, cursor: null, hasMore: false };
   }
+
+  async listOutboundInvoices(): Promise<BlingPage<BlingInvoice>> {
+    // Mock: devolve as mesmas notas com direction trocada pra teste
+    const items = MOCK_INVOICES.map((n) => ({ ...n, direction: 'outbound' as const }));
+    return { items, cursor: null, hasMore: false };
+  }
 }

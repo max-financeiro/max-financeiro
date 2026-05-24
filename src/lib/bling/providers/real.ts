@@ -109,19 +109,35 @@ export class RealBlingProvider implements BlingProvider {
     cursor?: string | null;
     limit?: number;
   }): Promise<BlingPage<BlingInvoice>> {
+    return this.listInvoicesByTipo(opts, 'E', 'inbound');
+  }
+
+  async listOutboundInvoices(opts: {
+    startDate: string;
+    endDate: string;
+    cursor?: string | null;
+    limit?: number;
+  }): Promise<BlingPage<BlingInvoice>> {
+    return this.listInvoicesByTipo(opts, 'S', 'outbound');
+  }
+
+  private async listInvoicesByTipo(
+    opts: { startDate: string; endDate: string; cursor?: string | null; limit?: number },
+    tipo: 'E' | 'S',
+    direction: 'inbound' | 'outbound',
+  ): Promise<BlingPage<BlingInvoice>> {
     const page = parseInt(opts.cursor ?? '1', 10);
     const params = new URLSearchParams({
       pagina: String(page),
       limite: String(opts.limit ?? 100),
       dataEmissaoInicial: opts.startDate,
       dataEmissaoFinal: opts.endDate,
-      tipo: 'E',                                     // E = entrada (compra)
+      tipo,
     });
     const data = await this.get<{ data: Array<Record<string, unknown>> }>(
       `/nfe?${params.toString()}`,
     );
-
-    const items: BlingInvoice[] = (data.data ?? []).map((n) => mapInvoice(n, 'inbound'));
+    const items: BlingInvoice[] = (data.data ?? []).map((n) => mapInvoice(n, direction));
     const hasMore = items.length === (opts.limit ?? 100);
     return { items, cursor: hasMore ? String(page + 1) : null, hasMore };
   }

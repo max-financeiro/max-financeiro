@@ -90,4 +90,15 @@ export interface BlingProvider {
     cursor?: string | null;
     limit?: number;
   }): Promise<BlingPage<BlingInvoice>>;
+
+  /**
+   * Lista NF-es de saída (vendas) num intervalo. Cada NF emitida vira
+   * uma Conta a Receber (sprint 8).
+   */
+  listOutboundInvoices(opts: {
+    startDate: string;
+    endDate: string;
+    cursor?: string | null;
+    limit?: number;
+  }): Promise<BlingPage<BlingInvoice>>;
 }

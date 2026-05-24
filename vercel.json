@@ -16,6 +16,10 @@
     {
       "path": "/api/cron/inter-conciliacao",
       "schedule": "30 10 * * *"
+    },
+    {
+      "path": "/api/cron/bling-receivables",
+      "schedule": "45 11 * * *"
     }
   ]
 }

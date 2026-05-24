@@ -4,6 +4,7 @@ import { createClient } from '@/lib/supabase/server';
 import { ArFiltersForm } from './ArFiltersForm';
 import { ArRow } from './ArRow';
 import { CreateArDialog } from './CreateArDialog';
+import { SyncBlingButton } from './SyncBlingButton';
 
 export const dynamic = 'force-dynamic';
 
@@ -120,10 +121,13 @@ export default async function ContasAReceberPage({
           </p>
         </div>
         {canMutate && (
-          <CreateArDialog
-            empresas={empresas}
-            customers={(customers ?? []).map((c) => ({ id: c.id, label: c.legal_name }))}
-          />
+          <div className="flex flex-col items-end gap-3">
+            <CreateArDialog
+              empresas={empresas}
+              customers={(customers ?? []).map((c) => ({ id: c.id, label: c.legal_name }))}
+            />
+            <SyncBlingButton />
+          </div>
         )}
       </header>
 
