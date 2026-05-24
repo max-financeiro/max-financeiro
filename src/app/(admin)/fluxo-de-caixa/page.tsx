@@ -82,6 +82,25 @@ export default async function FluxoDeCaixaPage() {
     0,
   );
 
+  // Contas a Receber em aberto + próximos 30d + atraso
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const { data: arRows } = await (supabase as any)
+    .from('accounts_receivable')
+    .select('amount_pending, amount, status, due_date')
+    .is('deleted_at', null)
+    .in('status', ['pending', 'partially_received']);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const ars = (arRows ?? []) as any[];
+  const arTotalOpen = ars.reduce((a, r) => a + Number(r.amount_pending ?? r.amount ?? 0), 0);
+  const arDue30 = ars
+    .filter((r) => r.due_date >= today && r.due_date <= in30)
+    .reduce((a, r) => a + Number(r.amount_pending ?? r.amount ?? 0), 0);
+  const arOverdue = ars
+    .filter((r) => r.due_date && r.due_date < today)
+    .reduce((a, r) => a + Number(r.amount_pending ?? r.amount ?? 0), 0);
+  // Saldo projetado 30d = AR 30d - CAP 30d
+  const projecao30 = arDue30 - total30;
+
   // Agrupa próximos 30d por semana (ISO week) — visual de pressão por semana
   const buckets = bucketByWeek(due30, today, in30);
 
@@ -173,20 +192,58 @@ export default async function FluxoDeCaixaPage() {
         />
       </section>
 
-      <section className="bg-white border border-neutral-200 rounded-lg p-5">
-        <h2 className="font-display text-lg font-semibold text-maxfem-ink mb-1">
-          Movimento dos últimos 30 dias
+      <section className="grid md:grid-cols-2 gap-4">
+        <div className="bg-white border border-neutral-200 rounded-lg p-5">
+          <h2 className="font-display text-base font-semibold text-maxfem-ink mb-1">
+            Saídas — últimos 30 dias
+          </h2>
+          <p className="text-xs text-neutral-500 mb-3">
+            Débitos no extrato Inter conciliados (
+            <Link href="/caixa/conciliacao" className="text-maxfem-pink hover:underline">
+              conciliação
+            </Link>
+            ).
+          </p>
+          <div className="text-2xl font-display font-semibold text-rose-700">
+            − {brl(totalPaid30)}
+          </div>
+        </div>
+
+        <div className="bg-white border border-neutral-200 rounded-lg p-5">
+          <h2 className="font-display text-base font-semibold text-maxfem-ink mb-1">
+            A receber em 30 dias
+          </h2>
+          <p className="text-xs text-neutral-500 mb-3">
+            Total das contas a receber com vencimento até {addDays(today, 30).split('-').reverse().join('/')}.{' '}
+            <Link href="/contas-a-receber" className="text-maxfem-pink hover:underline">
+              ver detalhes
+            </Link>
+          </p>
+          <div className="text-2xl font-display font-semibold text-emerald-700">
+            + {brl(arDue30)}
+          </div>
+        </div>
+      </section>
+
+      <section className="bg-white border border-neutral-200 rounded-lg p-5 mt-4">
+        <h2 className="font-display text-base font-semibold text-maxfem-ink mb-1">
+          Projeção líquida dos próximos 30 dias
         </h2>
         <p className="text-xs text-neutral-500 mb-3">
-          Soma de débitos no extrato Inter conciliado. Requer{' '}
-          <Link href="/caixa/conciliacao" className="text-maxfem-pink hover:underline">
-            sincronização da conciliação
-          </Link>{' '}
-          em dia pra refletir a realidade.
+          A receber em 30d (R$ {arDue30.toFixed(2)}) menos a pagar em 30d (R$ {total30.toFixed(2)}). Não inclui saldo atual do banco.
         </p>
-        <div className="text-3xl font-display font-semibold text-maxfem-ink">
-          {brl(totalPaid30)} <span className="text-base text-neutral-500 font-normal">pago</span>
+        <div
+          className={`text-3xl font-display font-semibold ${
+            projecao30 >= 0 ? 'text-emerald-700' : 'text-rose-700'
+          }`}
+        >
+          {projecao30 >= 0 ? '+' : '−'} {brl(Math.abs(projecao30))}
         </div>
+        {arOverdue > 0 && (
+          <div className="text-xs text-amber-700 mt-2">
+            Cuidado: {brl(arOverdue)} já em atraso no recebimento. Total a receber em aberto: {brl(arTotalOpen)}.
+          </div>
+        )}
       </section>
     </div>
   );
