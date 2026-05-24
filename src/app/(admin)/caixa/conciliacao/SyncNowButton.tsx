@@ -1,16 +1,35 @@
 'use client';
 
-import { useActionState } from 'react';
+import { useState } from 'react';
+import { useRouter } from 'next/navigation';
 import { syncNowAction, type ActionState } from './actions';
 
 export function SyncNowButton() {
-  const [state, action, pending] = useActionState<ActionState, FormData>(syncNowAction, null);
+  const router = useRouter();
+  const [pending, setPending] = useState(false);
+  const [state, setState] = useState<ActionState>(null);
 
-  function sync(days: number) {
-    const fd = new FormData();
-    fd.set('days', String(days));
-    // action() do useActionState já transiciona; sem startTransition extra
-    void action(fd);
+  async function sync(days: number) {
+    console.log('[SyncNow] click', { days, ts: new Date().toISOString() });
+    setPending(true);
+    setState(null);
+    try {
+      const fd = new FormData();
+      fd.set('days', String(days));
+      const result = await syncNowAction(null, fd);
+      console.log('[SyncNow] result', result);
+      setState(result);
+      // Refresh page data se sucesso, pra novas transações aparecerem na tabela
+      if (result?.ok === true) router.refresh();
+    } catch (err) {
+      console.error('[SyncNow] threw', err);
+      setState({
+        ok: false,
+        error: `Falha no client: ${err instanceof Error ? err.message : String(err)}`,
+      });
+    } finally {
+      setPending(false);
+    }
   }
 
   return (
@@ -22,7 +41,7 @@ export function SyncNowButton() {
           disabled={pending}
           className="px-3 py-1.5 rounded-md bg-maxfem-pink text-white text-sm font-medium hover:opacity-90 disabled:opacity-50"
         >
-          {pending ? 'Sincronizando... (até 60s)' : 'Sincronizar agora (10d)'}
+          {pending ? 'Sincronizando…' : 'Sincronizar agora (10d)'}
         </button>
         <button
           type="button"
