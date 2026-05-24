@@ -24,6 +24,9 @@ export default defineConfig({
   resolve: {
     alias: {
       '@': path.resolve(__dirname, './src'),
+      // server-only é stub em testes — Vitest não tem o condition
+      // `react-server` que Next.js usa, e o package crasha por padrão.
+      'server-only': path.resolve(__dirname, './tests/stubs/server-only.ts'),
     },
   },
 });

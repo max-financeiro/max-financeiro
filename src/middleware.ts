@@ -30,6 +30,7 @@ const PUBLIC_ROUTES = [
   // exigindo o header Authorization: Bearer ${CRON_SECRET}.
   '/api/focus/sync',
   '/api/bling/sync',
+  '/api/cron',
   '/legal/privacidade',
   '/legal/termos',
 ];
