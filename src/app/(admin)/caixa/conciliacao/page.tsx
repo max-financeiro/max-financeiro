@@ -6,6 +6,9 @@ import { ConciliacaoRow } from './ConciliacaoRow';
 import { SyncNowButton } from './SyncNowButton';
 
 export const dynamic = 'force-dynamic';
+// Server Action syncNowAction chama Inter API + faz dezenas de queries;
+// default Vercel é 10s no Hobby. 300s = limite Pro.
+export const maxDuration = 300;
 
 type SearchParams = {
   org?: string;

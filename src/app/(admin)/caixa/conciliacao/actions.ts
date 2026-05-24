@@ -59,14 +59,19 @@ export async function syncNowAction(
     .slice(0, 10);
 
   try {
+    console.log(TAG, 'sync_start', { days: parsed.data.days, range: [start, today] });
     const admin = getAdminClient();
     const accounts = await listInterAccounts(admin);
+    console.log(TAG, 'accounts_resolved', accounts.length, accounts.map((a) => a.label));
     if (accounts.length === 0) {
       return { ok: false, error: 'Nenhuma conta Inter configurada.' };
     }
     let totalImported = 0;
     let totalMatched = 0;
     let totalUnmatched = 0;
+    let totalSkipped = 0;
+    let totalErrors = 0;
+    const errorMsgs: string[] = [];
     for (const acc of accounts) {
       const r = await syncInterExtract(admin, {
         organizationId: acc.organizationId,
@@ -74,18 +79,28 @@ export async function syncNowAction(
         startDate: start,
         endDate: today,
       });
+      console.log(TAG, 'sync_result', acc.label, r);
       totalImported += r.imported;
       totalMatched += r.autoMatched;
       totalUnmatched += r.unmatched;
+      totalSkipped += r.skippedDuplicate;
+      totalErrors += r.errors;
+      if (r.errorDetails) errorMsgs.push(...r.errorDetails.slice(0, 3));
     }
     revalidatePath('/caixa/conciliacao');
+    if (totalErrors > 0) {
+      return {
+        ok: false,
+        error: `Sync com erros: ${totalErrors} falha(s). ${errorMsgs.join('; ')}`,
+      };
+    }
     return {
       ok: true,
-      message: `Sync ${parsed.data.days}d — ${totalImported} importadas, ${totalMatched} auto-conciliadas, ${totalUnmatched} pendentes.`,
+      message: `Sync ${parsed.data.days}d — ${totalImported} novas, ${totalSkipped} já existiam, ${totalMatched} casadas auto, ${totalUnmatched} pendentes de revisão.`,
     };
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
-    console.error(TAG, 'sync_failed', msg);
+    console.error(TAG, 'sync_failed', msg, err);
     return { ok: false, error: `Falha no sync: ${msg}` };
   }
 }
