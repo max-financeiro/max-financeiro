@@ -14,7 +14,7 @@ const SECTIONS: Section[] = [
       { href: '/dashboard', label: 'Dashboard' },
       { href: '/contas-a-pagar', label: 'Contas a pagar' },
       { href: '/contas-a-receber', label: 'Contas a receber', soon: true },
-      { href: '/fluxo-de-caixa', label: 'Fluxo de caixa', soon: true },
+      { href: '/fluxo-de-caixa', label: 'Fluxo de caixa' },
     ],
   },
   {
