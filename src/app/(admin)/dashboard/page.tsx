@@ -1,414 +1,672 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
 import { createClient } from '@/lib/supabase/server';
-import {
-  Badge,
-  Button,
-  Card,
-  EmptyState,
-  KpiCard,
-  PageHeader,
-  StatusBadge,
-} from '@/components/ui';
 
-export const metadata: Metadata = {
-  title: 'Dashboard',
-};
-
+export const metadata: Metadata = { title: 'Dashboard executivo' };
 export const dynamic = 'force-dynamic';
 
-type CapRow = {
-  id: string;
-  amount: number;
-  amount_paid: number;
-  due_date: string;
-  status: string;
-  approval_level_required: string | null;
-  supplier_id: string | null;
-  description: string | null;
-};
-
-const ACTIVE_STATUSES = [
-  'draft',
-  'submitted',
-  'under_analysis',
-  'pending_approval',
-  'approved',
-  'sent_to_bank',
-];
-
+function brl(n: number | string | null | undefined): string {
+  return Number(n ?? 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+}
+function brlCompact(n: number): string {
+  const v = Number(n);
+  if (Math.abs(v) >= 1_000_000) return `R$ ${(v / 1_000_000).toFixed(1)}M`;
+  if (Math.abs(v) >= 1_000) return `R$ ${(v / 1_000).toFixed(1)}k`;
+  return brl(v);
+}
 function startOfMonthISO(): string {
   const d = new Date();
   return new Date(d.getFullYear(), d.getMonth(), 1).toISOString().slice(0, 10);
 }
-
-function addDaysISO(days: number): string {
-  return new Date(Date.now() + days * 86_400_000).toISOString().slice(0, 10);
+function startOfLastMonthISO(): string {
+  const d = new Date();
+  return new Date(d.getFullYear(), d.getMonth() - 1, 1).toISOString().slice(0, 10);
+}
+function endOfLastMonthISO(): string {
+  const d = new Date();
+  return new Date(d.getFullYear(), d.getMonth(), 0).toISOString().slice(0, 10);
+}
+function todayISO(): string {
+  return new Date().toISOString().slice(0, 10);
+}
+function monthLabel(iso: string): string {
+  const d = new Date(`${iso}T00:00:00Z`);
+  return d.toLocaleDateString('pt-BR', { month: 'short', timeZone: 'UTC' }).replace('.', '');
 }
 
-function brl(value: number): string {
-  return value.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+interface DreSummary {
+  receita_bruta: number;
+  receita_recebida: number;
+  receita_pendente: number;
+  despesa_total: number;
+  despesa_paga: number;
+  despesa_pendente: number;
+  resultado: number;
+  resultado_caixa: number;
+  margem_pct: number;
+}
+
+interface TrendRow {
+  month: string;
+  receita: number;
+  despesa: number;
+  resultado: number;
+}
+
+interface TopAccount {
+  account_type: 'revenue' | 'expense';
+  account_code: string | null;
+  account_name: string | null;
+  total: number;
+  doc_count: number;
+  rank: number;
+}
+
+interface Pendencias {
+  ap_vencendo_7d_qtd: number;
+  ap_vencendo_7d_total: number;
+  ap_atrasados_qtd: number;
+  ap_atrasados_total: number;
+  ar_atrasados_qtd: number;
+  ar_atrasados_total: number;
+  saldo_caixa_unmatched: number;
+}
+
+interface ProjDay {
+  date: string;
+  inflow: number;
+  outflow: number;
+  net: number;
+  running_balance: number;
 }
 
 export default async function DashboardPage() {
   const supabase = await createClient();
-  const today = new Date().toISOString().slice(0, 10);
-  const next14 = addDaysISO(14);
+
   const monthStart = startOfMonthISO();
+  const lastMonthStart = startOfLastMonthISO();
+  const lastMonthEnd = endOfLastMonthISO();
+  const today = todayISO();
 
-  const [
-    capsActive,
-    paidThisMonth,
-    orphansCount,
-    blingStatus,
-    blingLastSync,
-    suppliersList,
-    orgsList,
-  ] = await Promise.all([
-    supabase
-      .from('accounts_payable')
-      .select(
-        'id, amount, amount_paid, due_date, status, approval_level_required, supplier_id, description',
-      )
-      .in('status', ACTIVE_STATUSES)
-      .is('deleted_at', null)
-      .order('due_date', { ascending: true }),
-    supabase
-      .from('accounts_payable')
-      .select('amount, amount_paid, supplier_id')
-      .eq('status', 'paid')
-      .gte('updated_at', monthStart)
-      .is('deleted_at', null),
-    supabase
-      .from('fiscal_documents')
-      .select('id', { count: 'exact', head: true })
-      .eq('status', 'orphan')
-      .is('deleted_at', null),
-    supabase
-      .from('bling_connection_status')
-      .select('organization_id, active, connected_at, last_refresh_at'),
-    supabase
-      .from('bling_sync_queue')
-      .select('id, sync_type, status, records_synced, started_at, error_message')
-      .order('created_at', { ascending: false })
-      .limit(3),
-    supabase.from('business_partners').select('id, legal_name, trade_name'),
-    supabase.from('organizations').select('id, legal_name, trade_name'),
-  ]);
+  const { data: group } = await supabase
+    .from('organizations')
+    .select('id, legal_name')
+    .eq('type', 'group')
+    .is('deleted_at', null)
+    .limit(1)
+    .maybeSingle();
 
-  const caps = (capsActive.data ?? []) as CapRow[];
-  const supplierMap = new Map(
-    (suppliersList.data ?? []).map((s) => [s.id, s.trade_name || s.legal_name]),
-  );
-
-  const overdue = caps.filter((c) => c.due_date < today);
-  const next7 = caps.filter((c) => c.due_date >= today && c.due_date <= addDaysISO(7));
-  const next14List = caps.filter((c) => c.due_date >= today && c.due_date <= next14);
-  const pendingApproval = caps.filter((c) => c.status === 'pending_approval');
-
-  const sumPending = (rows: CapRow[]) =>
-    rows.reduce((s, c) => s + Number(c.amount) - Number(c.amount_paid), 0);
-
-  const overdueAmount = sumPending(overdue);
-  const next7Amount = sumPending(next7);
-  const pendingApprovalAmount = sumPending(pendingApproval);
-  const paidThisMonthAmount = (paidThisMonth.data ?? []).reduce(
-    (s, p) => s + Number(p.amount_paid),
-    0,
-  );
-
-  const supplierTotals = new Map<string, number>();
-  for (const p of paidThisMonth.data ?? []) {
-    if (!p.supplier_id) continue;
-    supplierTotals.set(
-      p.supplier_id,
-      (supplierTotals.get(p.supplier_id) ?? 0) + Number(p.amount_paid),
+  if (!group) {
+    return (
+      <div className="max-w-3xl mx-auto p-6">
+        <h1 className="text-xl font-semibold">Grupo não cadastrado</h1>
+        <p className="text-sm text-neutral-600 mt-1">
+          Cadastre o grupo Maxfem em /cadastros pra ativar o dashboard.
+        </p>
+      </div>
     );
   }
-  const topSuppliers = Array.from(supplierTotals.entries())
-    .map(([id, total]) => ({ id, name: supplierMap.get(id) ?? '—', total }))
-    .sort((a, b) => b.total - a.total)
-    .slice(0, 10);
-  const topSuppliersMax = topSuppliers[0]?.total ?? 1;
 
-  const byApproval = caps.reduce<Record<string, { count: number; amount: number }>>(
-    (acc, c) => {
-      const k = c.approval_level_required ?? 'auto';
-      if (!acc[k]) acc[k] = { count: 0, amount: 0 };
-      acc[k]!.count += 1;
-      acc[k]!.amount += Number(c.amount) - Number(c.amount_paid);
-      return acc;
-    },
-    {},
-  );
-  const approvalTotal = Object.values(byApproval).reduce((s, v) => s + v.amount, 0) || 1;
+  // Roda todas as queries em paralelo
+  const [
+    summaryThis,
+    summaryLast,
+    trendRows,
+    topAccts,
+    pendRows,
+    projRows,
+  ] = await Promise.all([
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (supabase as any).rpc('dre_summary', {
+      p_group_id: group.id,
+      p_organization_id: null,
+      p_date_from: monthStart,
+      p_date_to: today,
+      p_cost_center_id: null,
+    }),
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (supabase as any).rpc('dre_summary', {
+      p_group_id: group.id,
+      p_organization_id: null,
+      p_date_from: lastMonthStart,
+      p_date_to: lastMonthEnd,
+      p_cost_center_id: null,
+    }),
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (supabase as any).rpc('dashboard_revenue_trend', {
+      p_group_id: group.id,
+      p_organization_id: null,
+      p_months: 12,
+    }),
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (supabase as any).rpc('dashboard_top_accounts', {
+      p_group_id: group.id,
+      p_organization_id: null,
+      p_date_from: monthStart,
+      p_date_to: today,
+      p_limit: 5,
+    }),
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (supabase as any).rpc('dashboard_pendencias', {
+      p_group_id: group.id,
+      p_organization_id: null,
+    }),
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (supabase as any).rpc('cashflow_projection', {
+      p_group_id: group.id,
+      p_organization_id: null,
+      p_days_ahead: 30,
+    }),
+  ]);
 
-  const blingConnectedCount = (blingStatus.data ?? []).filter((b) => b.active).length;
-  const blingTotalOrgs = (orgsList.data ?? []).length;
+  const cur = (summaryThis.data?.[0] as DreSummary | undefined) ?? null;
+  const prev = (summaryLast.data?.[0] as DreSummary | undefined) ?? null;
+  const trend = (trendRows.data as TrendRow[]) ?? [];
+  const top = (topAccts.data as TopAccount[]) ?? [];
+  const pend = (pendRows.data?.[0] as Pendencias | undefined) ?? null;
+  const proj = (projRows.data as ProjDay[]) ?? [];
+
+  // Delta MoM
+  const deltaPct = (cur: number, prev: number): number | null => {
+    if (Math.abs(prev) < 0.005) return null;
+    return ((cur - prev) / Math.abs(prev)) * 100;
+  };
+
+  // YoY: pega no trend o mesmo mês há 12 meses
+  const sameMonthLastYear = trend[0]; // primeiro ponto = ~12 meses atrás
+  const deltaYoY =
+    cur && sameMonthLastYear
+      ? deltaPct(Number(cur.receita_bruta), Number(sameMonthLastYear.receita))
+      : null;
+
+  const topRevenues = top.filter((t) => t.account_type === 'revenue');
+  const topExpenses = top.filter((t) => t.account_type === 'expense');
+
+  const proj30Balance = proj.length > 0 ? Number(proj[proj.length - 1]!.running_balance) : 0;
+
+  // Bling status pra sininho de saúde
+  const { data: blingRows } = await supabase
+    .from('bling_connection_status')
+    .select('active');
+  const blingConnected = (blingRows ?? []).filter((b) => b.active).length;
+  const blingTotal = (blingRows ?? []).length;
 
   return (
-    <div className="container-page max-w-7xl space-y-10">
-      <PageHeader
-        eyebrow="Visão executiva"
-        title="Dashboard"
-        description="Indicadores em tempo real filtrados pela sua permissão. Cada bloco respeita RLS."
-      />
-
-      <section className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-        <KpiCard
-          label="A vencer · 7 dias"
-          value={brl(next7Amount)}
-          subtitle={`${next7.length} título${next7.length === 1 ? '' : 's'}`}
-          tone={next7Amount > 0 ? 'warning' : 'neutral'}
-        />
-        <KpiCard
-          label="Vencidas"
-          value={brl(overdueAmount)}
-          subtitle={`${overdue.length} título${overdue.length === 1 ? '' : 's'}`}
-          tone={overdue.length > 0 ? 'danger' : 'success'}
-        />
-        <KpiCard
-          label="Aguardando aprovação"
-          value={brl(pendingApprovalAmount)}
-          subtitle={`${pendingApproval.length} título${pendingApproval.length === 1 ? '' : 's'}`}
-          tone={pendingApproval.length > 0 ? 'info' : 'neutral'}
-        />
-        <KpiCard
-          label="Pago no mês"
-          value={brl(paidThisMonthAmount)}
-          subtitle={`desde ${new Date(monthStart).toLocaleDateString('pt-BR')}`}
-          tone="pink"
-        />
-      </section>
-
-      <section>
-        <div className="flex items-baseline justify-between mb-4">
-          <div>
-            <h2 className="text-heading font-semibold text-ink-900 tracking-tight">
-              A vencer · próximos 14 dias
-            </h2>
-            <p className="text-caption text-ink-500 mt-0.5">
-              Top 10 mais urgentes, ordenados por vencimento.
-            </p>
-          </div>
-          <Link
-            href="/contas-a-pagar"
-            className="text-caption font-medium text-pink-700 hover:text-pink-800"
-          >
-            Ver todas →
+    <div className="max-w-7xl mx-auto p-6 space-y-6">
+      <header className="flex items-end justify-between gap-4 flex-wrap">
+        <div>
+          <h1 className="text-2xl font-semibold text-maxfem-pink">Dashboard executivo</h1>
+          <p className="text-sm text-neutral-600 mt-1">
+            Visão consolidada · {group.legal_name} · mês corrente (
+            {new Date(monthStart).toLocaleDateString('pt-BR', { day: '2-digit', month: 'long' })}
+            {' '}até hoje)
+          </p>
+        </div>
+        <div className="flex items-center gap-2 text-xs">
+          <Link href="/dre" className="px-3 py-1.5 rounded-md border border-maxfem-pink text-maxfem-pink hover:bg-maxfem-pink hover:text-white transition">
+            Ver DRE detalhada →
+          </Link>
+          <Link href="/fluxo-de-caixa" className="px-3 py-1.5 rounded-md text-neutral-600 hover:text-maxfem-pink">
+            Fluxo de caixa
           </Link>
         </div>
-        {next14List.length === 0 ? (
-          <EmptyState
-            title="Nada a vencer nos próximos 14 dias"
-            description="Aproveita pra revisar fornecedores ou cadastros."
-          />
-        ) : (
-          <Card className="overflow-hidden">
-            <table className="w-full">
-              <thead className="bg-surface-sunken">
-                <tr>
-                  <Th>Vencimento</Th>
-                  <Th>Fornecedor</Th>
-                  <Th>Descrição</Th>
-                  <Th>Status</Th>
-                  <Th className="text-right">Valor</Th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-ink-200/60">
-                {next14List.slice(0, 10).map((c) => {
-                  const days = Math.ceil(
-                    (new Date(c.due_date).getTime() - Date.now()) / 86_400_000,
-                  );
-                  return (
-                    <tr key={c.id} className="hover:bg-surface-sunken/50 transition-colors">
-                      <Td>
-                        <div className="text-body-sm text-ink-900 font-medium">
-                          {new Date(c.due_date).toLocaleDateString('pt-BR')}
-                        </div>
-                        <div className="text-micro text-ink-500 nums">
-                          {days <= 0 ? 'hoje' : `em ${days}d`}
-                        </div>
-                      </Td>
-                      <Td>{supplierMap.get(c.supplier_id ?? '') ?? '—'}</Td>
-                      <Td className="text-ink-600 max-w-xs truncate">{c.description ?? '—'}</Td>
-                      <Td>
-                        <StatusBadge status={c.status} />
-                      </Td>
-                      <Td className="text-right font-medium nums">
-                        {brl(Number(c.amount) - Number(c.amount_paid))}
-                      </Td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </Card>
-        )}
+      </header>
+
+      {/* ===== KPIs principais ===== */}
+      <section className="grid grid-cols-2 md:grid-cols-4 gap-3">
+        <KpiCard
+          label="Receita do mês"
+          value={brl(cur?.receita_bruta)}
+          delta={cur && prev ? deltaPct(Number(cur.receita_bruta), Number(prev.receita_bruta)) : null}
+          tone="ok"
+          hint={deltaYoY !== null ? `YoY ${deltaYoY >= 0 ? '+' : ''}${deltaYoY.toFixed(1)}%` : undefined}
+        />
+        <KpiCard
+          label="Despesa do mês"
+          value={brl(cur?.despesa_total)}
+          delta={cur && prev ? deltaPct(Number(cur.despesa_total), Number(prev.despesa_total)) : null}
+          tone="warn"
+          invertDelta
+        />
+        <KpiCard
+          label="Resultado"
+          value={brl(cur?.resultado)}
+          delta={cur && prev ? deltaPct(Number(cur.resultado), Number(prev.resultado)) : null}
+          tone={cur && Number(cur.resultado) >= 0 ? 'ok' : 'danger'}
+        />
+        <KpiCard
+          label="Margem"
+          value={`${Number(cur?.margem_pct ?? 0).toFixed(1)}%`}
+          hint="resultado / receita"
+          tone={cur && Number(cur.margem_pct) >= 0 ? 'ok' : 'danger'}
+        />
       </section>
 
-      <section className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <div>
-          <h2 className="text-heading font-semibold text-ink-900 tracking-tight mb-3">
-            Distribuição por alçada
-          </h2>
-          <Card className="p-5 space-y-4">
-            {(['auto', 'tactical', 'strategic'] as const).map((k) => {
-              const data = byApproval[k] ?? { count: 0, amount: 0 };
-              const pct = approvalTotal > 0 ? (data.amount / approvalTotal) * 100 : 0;
-              return (
-                <div key={k}>
-                  <div className="flex items-baseline justify-between mb-1.5">
-                    <div className="flex items-center gap-2">
-                      <span className="text-body-sm font-medium text-ink-900">
-                        {approvalLabel(k)}
-                      </span>
-                      <Badge tone="neutral">{data.count}</Badge>
-                    </div>
-                    <span className="text-body-sm font-medium nums">{brl(data.amount)}</span>
-                  </div>
-                  <div className="h-1.5 bg-ink-100 rounded-full overflow-hidden">
-                    <div
-                      className={
-                        k === 'auto'
-                          ? 'h-full bg-success-500'
-                          : k === 'tactical'
-                            ? 'h-full bg-warning-500'
-                            : 'h-full bg-pink-500'
-                      }
-                      style={{ width: `${pct}%` }}
-                    />
-                  </div>
-                </div>
-              );
-            })}
-          </Card>
+      {/* ===== Caixa: realizado vs projetado 30d ===== */}
+      <section className="grid grid-cols-1 md:grid-cols-3 gap-3">
+        <div className="bg-white border border-neutral-200 rounded-lg p-4">
+          <div className="text-[10px] uppercase tracking-wider text-neutral-500 font-semibold">
+            Recebido no mês (caixa)
+          </div>
+          <div className="font-display text-xl font-semibold mt-1 tabular-nums text-emerald-700">
+            {brl(cur?.receita_recebida)}
+          </div>
+          <div className="text-[11px] text-neutral-500 mt-1">
+            pendente: {brl(cur?.receita_pendente)}
+          </div>
         </div>
+        <div className="bg-white border border-neutral-200 rounded-lg p-4">
+          <div className="text-[10px] uppercase tracking-wider text-neutral-500 font-semibold">
+            Pago no mês (caixa)
+          </div>
+          <div className="font-display text-xl font-semibold mt-1 tabular-nums text-amber-700">
+            {brl(cur?.despesa_paga)}
+          </div>
+          <div className="text-[11px] text-neutral-500 mt-1">
+            a pagar: {brl(cur?.despesa_pendente)}
+          </div>
+        </div>
+        <div className="bg-white border border-neutral-200 rounded-lg p-4">
+          <div className="text-[10px] uppercase tracking-wider text-neutral-500 font-semibold">
+            Projeção +30 dias
+          </div>
+          <div
+            className={`font-display text-xl font-semibold mt-1 tabular-nums ${
+              proj30Balance >= 0 ? 'text-emerald-700' : 'text-rose-700'
+            }`}
+          >
+            {proj30Balance >= 0 ? '+' : '−'} {brl(Math.abs(proj30Balance))}
+          </div>
+          <div className="text-[11px] text-neutral-500 mt-1">
+            ar pendente − ap pendente nos próximos 30d
+          </div>
+        </div>
+      </section>
 
-        <div>
-          <h2 className="text-heading font-semibold text-ink-900 tracking-tight mb-3">
-            Top fornecedores · mês
+      {/* ===== Tendência 12 meses ===== */}
+      {trend.length > 0 && (
+        <section className="bg-white border border-neutral-200 rounded-lg p-5">
+          <h2 className="text-sm font-semibold text-neutral-800 mb-3">
+            Tendência últimos 12 meses
           </h2>
-          {topSuppliers.length === 0 ? (
-            <EmptyState
-              title="Nenhum pagamento neste mês"
-              description="Pagamentos aprovados aparecem aqui quando virarem PAID."
-            />
+          <RevenueTrendChart rows={trend} />
+        </section>
+      )}
+
+      {/* ===== Top 5 contas ===== */}
+      <section className="grid grid-cols-1 md:grid-cols-2 gap-3">
+        <div className="bg-white border border-neutral-200 rounded-lg overflow-hidden">
+          <div className="px-4 py-2 bg-emerald-50 border-b border-emerald-100">
+            <h3 className="text-xs uppercase tracking-wider font-semibold text-emerald-800">
+              Top 5 receitas do mês
+            </h3>
+          </div>
+          {topRevenues.length === 0 ? (
+            <p className="p-6 text-center text-sm text-neutral-500">Sem receita lançada no mês.</p>
           ) : (
-            <Card className="p-5 space-y-3">
-              {topSuppliers.map((s) => {
-                const pct = (s.total / topSuppliersMax) * 100;
-                return (
-                  <div key={s.id}>
-                    <div className="flex items-baseline justify-between mb-1.5">
-                      <span className="text-body-sm text-ink-800 truncate max-w-[60%]">
-                        {s.name}
-                      </span>
-                      <span className="text-body-sm font-medium nums">{brl(s.total)}</span>
-                    </div>
-                    <div className="h-1 bg-ink-100 rounded-full overflow-hidden">
-                      <div
-                        className="h-full bg-ink-900 rounded-full transition-all"
-                        style={{ width: `${pct}%` }}
-                      />
-                    </div>
-                  </div>
-                );
-              })}
-            </Card>
+            <TopList rows={topRevenues} kind="revenue" total={Number(cur?.receita_bruta ?? 0)} />
+          )}
+        </div>
+        <div className="bg-white border border-neutral-200 rounded-lg overflow-hidden">
+          <div className="px-4 py-2 bg-amber-50 border-b border-amber-100">
+            <h3 className="text-xs uppercase tracking-wider font-semibold text-amber-800">
+              Top 5 despesas do mês
+            </h3>
+          </div>
+          {topExpenses.length === 0 ? (
+            <p className="p-6 text-center text-sm text-neutral-500">Sem despesa lançada no mês.</p>
+          ) : (
+            <TopList rows={topExpenses} kind="expense" total={Number(cur?.despesa_total ?? 0)} />
           )}
         </div>
       </section>
 
-      <section className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <div>
-          <h2 className="text-heading font-semibold text-ink-900 tracking-tight mb-3">
-            NFs órfãs (Bling)
-          </h2>
-          <Card className="p-6">
-            <div className="flex items-center justify-between gap-4">
-              <div>
-                <p className="text-display-sm font-semibold text-ink-900 nums tracking-tight">
-                  {orphansCount.count ?? 0}
-                </p>
-                <p className="text-body-sm text-ink-500 mt-1">
-                  {(orphansCount.count ?? 0) === 0
-                    ? 'Nenhuma NF pendente de revisão.'
-                    : 'NFs aguardando aprovação ou descarte.'}
-                </p>
-              </div>
-              {(orphansCount.count ?? 0) > 0 && (
-                <Link href="/caixa/nfs-orfas">
-                  <Button variant="pink" size="sm">
-                    Revisar →
-                  </Button>
-                </Link>
-              )}
-            </div>
-          </Card>
-        </div>
+      {/* ===== Pendências urgentes ===== */}
+      {pend && (
+        <section className="bg-white border border-neutral-200 rounded-lg p-5">
+          <h2 className="text-sm font-semibold text-neutral-800 mb-3">Pendências urgentes</h2>
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
+            <PendCard
+              label="AP vencendo em 7d"
+              count={pend.ap_vencendo_7d_qtd}
+              value={pend.ap_vencendo_7d_total}
+              href="/contas-a-pagar?status=approved"
+              tone="warn"
+            />
+            <PendCard
+              label="AP atrasados"
+              count={pend.ap_atrasados_qtd}
+              value={pend.ap_atrasados_total}
+              href="/contas-a-pagar?status=approved"
+              tone="danger"
+            />
+            <PendCard
+              label="AR em atraso"
+              count={pend.ar_atrasados_qtd}
+              value={pend.ar_atrasados_total}
+              href="/contas-a-receber?status=pending"
+              tone="danger"
+            />
+            <PendCard
+              label="Conciliação pendente"
+              count={null}
+              value={pend.saldo_caixa_unmatched}
+              href="/caixa/conciliacao"
+              tone="warn"
+              valueIsTotal
+            />
+          </div>
+        </section>
+      )}
 
-        <div>
-          <h2 className="text-heading font-semibold text-ink-900 tracking-tight mb-3">
-            Integração Bling
-          </h2>
-          <Card className="p-6 space-y-4">
-            <div className="flex items-baseline justify-between">
-              <span className="text-body-sm text-ink-500">Filiais conectadas</span>
-              <span className="text-body-sm font-semibold nums">
-                {blingConnectedCount} de {blingTotalOrgs}
-              </span>
-            </div>
-            <div>
-              <p className="text-micro font-semibold uppercase tracking-wider text-ink-500 mb-2">
-                Últimos syncs
-              </p>
-              {(blingLastSync.data ?? []).length === 0 ? (
-                <p className="text-caption text-ink-500">Nenhum sync executado ainda.</p>
-              ) : (
-                <ul className="space-y-1.5">
-                  {(blingLastSync.data ?? []).map((j) => (
-                    <li key={j.id} className="flex items-center justify-between gap-2">
-                      <span className="font-mono text-caption text-ink-700">{j.sync_type}</span>
-                      <div className="flex items-center gap-2 text-caption text-ink-500">
-                        <StatusBadge status={j.status} dot={false} />
-                        <span className="nums">{j.records_synced ?? 0} reg</span>
-                      </div>
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </div>
-            <Link
+      {/* ===== Integrações status ===== */}
+      <section className="bg-white border border-neutral-200 rounded-lg p-4">
+        <div className="flex items-center justify-between flex-wrap gap-3">
+          <h2 className="text-sm font-semibold text-neutral-800">Integrações</h2>
+          <div className="flex items-center gap-3 text-xs">
+            <IntegrationDot
+              label={`Bling ${blingConnected}/${blingTotal}`}
+              active={blingConnected > 0}
               href="/integracoes/bling"
-              className="text-caption font-medium text-pink-700 hover:text-pink-800 inline-block"
-            >
-              Gerenciar →
+            />
+            <IntegrationDot
+              label="Inter"
+              active={true}
+              href="/caixa/conciliacao"
+            />
+            <Link href="/integracoes" className="text-neutral-500 hover:text-maxfem-pink">
+              ver todas →
             </Link>
-          </Card>
+          </div>
         </div>
       </section>
     </div>
   );
 }
 
-function Th({ children, className = '' }: { children: React.ReactNode; className?: string }) {
+// ============================================================
+// Sub-components
+// ============================================================
+
+function KpiCard({
+  label,
+  value,
+  delta,
+  hint,
+  tone = 'default',
+  invertDelta = false,
+}: {
+  label: string;
+  value: string;
+  delta?: number | null;
+  hint?: string;
+  tone?: 'default' | 'ok' | 'warn' | 'danger';
+  invertDelta?: boolean;
+}) {
+  const valCls =
+    tone === 'ok'
+      ? 'text-emerald-700'
+      : tone === 'warn'
+        ? 'text-amber-700'
+        : tone === 'danger'
+          ? 'text-rose-700'
+          : 'text-maxfem-ink';
+
+  let deltaCls = 'text-neutral-500';
+  let deltaSign = '';
+  if (delta !== null && delta !== undefined) {
+    const effectivelyGood = invertDelta ? delta < 0 : delta > 0;
+    deltaCls = effectivelyGood ? 'text-emerald-700' : delta === 0 ? 'text-neutral-500' : 'text-rose-700';
+    deltaSign = delta >= 0 ? '↑' : '↓';
+  }
+
   return (
-    <th
-      className={`px-4 py-2.5 text-left text-micro font-semibold text-ink-500 uppercase tracking-wider ${className}`}
-    >
-      {children}
-    </th>
+    <div className="bg-white border border-neutral-200 rounded-lg p-4">
+      <div className="text-[10px] uppercase tracking-wider text-neutral-500 font-semibold">{label}</div>
+      <div className={`font-display text-2xl font-semibold mt-1 tabular-nums ${valCls}`}>{value}</div>
+      <div className="flex items-center gap-2 mt-1.5 text-[11px]">
+        {delta !== null && delta !== undefined ? (
+          <span className={deltaCls}>
+            {deltaSign} {Math.abs(delta).toFixed(1)}% vs mês ant.
+          </span>
+        ) : (
+          <span className="text-neutral-400">{hint ?? '—'}</span>
+        )}
+        {delta !== null && delta !== undefined && hint && (
+          <>
+            <span className="text-neutral-300">·</span>
+            <span className="text-neutral-500">{hint}</span>
+          </>
+        )}
+      </div>
+    </div>
   );
 }
 
-function Td({ children, className = '' }: { children: React.ReactNode; className?: string }) {
-  return <td className={`px-4 py-3 text-body-sm text-ink-800 ${className}`}>{children}</td>;
+function RevenueTrendChart({ rows }: { rows: TrendRow[] }) {
+  // SVG bar chart simples: barra dupla receita (verde) + despesa (âmbar)
+  // + linha de resultado (rosa) por cima. Sem libs externas pra evitar
+  // overhead no bundle do dashboard.
+  const W = 720;
+  const H = 220;
+  const PAD_L = 50;
+  const PAD_R = 12;
+  const PAD_T = 16;
+  const PAD_B = 30;
+  const chartW = W - PAD_L - PAD_R;
+  const chartH = H - PAD_T - PAD_B;
+
+  const maxBar = Math.max(
+    1,
+    ...rows.map((r) => Math.max(Number(r.receita), Number(r.despesa))),
+  );
+  const maxRes = Math.max(...rows.map((r) => Math.abs(Number(r.resultado))));
+  const yScale = chartH / maxBar;
+  const xStep = chartW / rows.length;
+  const barW = Math.min(20, xStep * 0.35);
+  const yMid = PAD_T + chartH; // linha base
+  const resZero = PAD_T + chartH * 0.5;
+  const resScale = maxRes > 0 ? (chartH * 0.45) / maxRes : 0;
+
+  return (
+    <div className="overflow-x-auto">
+      <svg viewBox={`0 0 ${W} ${H}`} className="w-full" style={{ minWidth: 500 }}>
+        {/* Grid horizontal */}
+        {[0, 0.25, 0.5, 0.75, 1].map((p, i) => (
+          <line
+            key={i}
+            x1={PAD_L}
+            x2={W - PAD_R}
+            y1={PAD_T + chartH * (1 - p)}
+            y2={PAD_T + chartH * (1 - p)}
+            stroke="#e5e5e5"
+            strokeDasharray="2,3"
+          />
+        ))}
+        {[0, 0.5, 1].map((p, i) => (
+          <text
+            key={i}
+            x={PAD_L - 6}
+            y={PAD_T + chartH * (1 - p) + 4}
+            textAnchor="end"
+            fontSize="10"
+            fill="#737373"
+          >
+            {brlCompact(maxBar * p)}
+          </text>
+        ))}
+
+        {/* Barras */}
+        {rows.map((r, i) => {
+          const cx = PAD_L + xStep * i + xStep / 2;
+          const recH = Number(r.receita) * yScale;
+          const desH = Number(r.despesa) * yScale;
+          return (
+            <g key={r.month}>
+              {/* Receita (verde) */}
+              <rect
+                x={cx - barW - 1}
+                y={yMid - recH}
+                width={barW}
+                height={recH}
+                fill="#10b981"
+                rx="2"
+              />
+              {/* Despesa (âmbar) */}
+              <rect
+                x={cx + 1}
+                y={yMid - desH}
+                width={barW}
+                height={desH}
+                fill="#f59e0b"
+                rx="2"
+              />
+              {/* Label do mês */}
+              <text
+                x={cx}
+                y={H - 10}
+                textAnchor="middle"
+                fontSize="9"
+                fill="#737373"
+              >
+                {monthLabel(r.month)}
+              </text>
+            </g>
+          );
+        })}
+
+        {/* Linha de resultado (rosa) */}
+        {maxRes > 0 && (
+          <polyline
+            fill="none"
+            stroke="#ED2B75"
+            strokeWidth="2"
+            points={rows
+              .map((r, i) => {
+                const cx = PAD_L + xStep * i + xStep / 2;
+                const cy = resZero - Number(r.resultado) * resScale;
+                return `${cx},${cy}`;
+              })
+              .join(' ')}
+          />
+        )}
+      </svg>
+
+      <div className="flex items-center gap-4 text-xs mt-2 px-4">
+        <Legend color="#10b981" label="Receita" />
+        <Legend color="#f59e0b" label="Despesa" />
+        <Legend color="#ED2B75" label="Resultado" line />
+      </div>
+    </div>
+  );
 }
 
-function approvalLabel(k: string): string {
-  if (k === 'auto') return 'Operacional · até R$5k';
-  if (k === 'tactical') return 'Tática · R$5k–30k';
-  if (k === 'strategic') return 'Estratégica · acima de R$30k';
-  return k;
+function Legend({ color, label, line }: { color: string; label: string; line?: boolean }) {
+  return (
+    <span className="inline-flex items-center gap-1.5">
+      <span
+        className="inline-block"
+        style={{
+          width: line ? 14 : 10,
+          height: line ? 2 : 10,
+          background: color,
+          borderRadius: line ? 0 : 2,
+        }}
+      />
+      <span className="text-neutral-600">{label}</span>
+    </span>
+  );
+}
+
+function TopList({
+  rows,
+  kind,
+  total,
+}: {
+  rows: TopAccount[];
+  kind: 'revenue' | 'expense';
+  total: number;
+}) {
+  const accent = kind === 'revenue' ? 'bg-emerald-500' : 'bg-amber-500';
+  return (
+    <ul className="divide-y divide-neutral-100">
+      {rows.map((r) => {
+        const pct = total > 0 ? (Number(r.total) / total) * 100 : 0;
+        return (
+          <li key={`${r.account_code ?? 'no'}-${r.rank}`} className="px-4 py-2.5">
+            <div className="flex items-center justify-between gap-2 mb-1">
+              <span className="text-sm truncate">
+                {r.account_code && (
+                  <span className="font-mono text-xs text-neutral-400 mr-2">{r.account_code}</span>
+                )}
+                {r.account_name ?? <span className="italic text-neutral-400">sem plano</span>}
+              </span>
+              <span className="text-xs font-medium tabular-nums">{brl(r.total)}</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <div className="flex-1 h-1.5 bg-neutral-100 rounded-full overflow-hidden">
+                <div className={`h-full ${accent}`} style={{ width: `${pct.toFixed(1)}%` }} />
+              </div>
+              <span className="text-[10px] text-neutral-500 w-10 text-right">{pct.toFixed(1)}%</span>
+            </div>
+            <div className="text-[10px] text-neutral-500 mt-0.5">{r.doc_count} doc(s)</div>
+          </li>
+        );
+      })}
+    </ul>
+  );
+}
+
+function PendCard({
+  label,
+  count,
+  value,
+  href,
+  tone = 'default',
+  valueIsTotal = false,
+}: {
+  label: string;
+  count: number | null;
+  value: number;
+  href: string;
+  tone?: 'default' | 'warn' | 'danger';
+  valueIsTotal?: boolean;
+}) {
+  const valCls =
+    tone === 'danger' ? 'text-rose-700' : tone === 'warn' ? 'text-amber-700' : 'text-neutral-700';
+  return (
+    <Link
+      href={href}
+      className="block rounded-lg border border-neutral-200 p-3 hover:border-maxfem-pink hover:bg-pink-50/20 transition"
+    >
+      <div className="text-[10px] uppercase tracking-wider text-neutral-500 font-semibold">{label}</div>
+      <div className="flex items-baseline gap-2 mt-1">
+        {count !== null && (
+          <span className={`font-display text-xl font-semibold tabular-nums ${valCls}`}>{count}</span>
+        )}
+        <span className={`text-sm tabular-nums ${valueIsTotal ? `font-display font-semibold text-xl ${valCls}` : 'text-neutral-500'}`}>
+          {valueIsTotal ? brl(value) : `· ${brl(value)}`}
+        </span>
+      </div>
+    </Link>
+  );
+}
+
+function IntegrationDot({
+  label,
+  active,
+  href,
+}: {
+  label: string;
+  active: boolean;
+  href: string;
+}) {
+  return (
+    <Link href={href} className="inline-flex items-center gap-1.5 hover:text-maxfem-pink">
+      <span
+        className={`h-1.5 w-1.5 rounded-full ${active ? 'bg-emerald-500' : 'bg-neutral-300'}`}
+      />
+      <span>{label}</span>
+    </Link>
+  );
 }
