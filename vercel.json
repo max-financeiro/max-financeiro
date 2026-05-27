@@ -24,6 +24,10 @@
     {
       "path": "/api/cron/notifications",
       "schedule": "0 9 * * *"
+    },
+    {
+      "path": "/api/cron/bling-products",
+      "schedule": "0 12 * * *"
     }
   ]
 }

@@ -3,6 +3,9 @@ import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import { createClient } from '@/lib/supabase/server';
 import { formatBRL } from '@/lib/format';
+import { SyncBlingButton } from './SyncBlingButton';
+
+export const dynamic = 'force-dynamic';
 
 export const metadata: Metadata = { title: 'Estoque' };
 
@@ -85,12 +88,22 @@ export default async function EstoquePage({
       return true;
     });
 
-  // KPIs
+  // KPIs contábeis
   const totalSKUs = rows.length;
   const totalUnits = rows.reduce((acc, r) => acc + r.stock.total, 0);
   const totalCostValue = rows.reduce((acc, r) => acc + r.stock.total * Number(r.cost ?? 0), 0);
+  const totalSaleValue = rows.reduce((acc, r) => acc + r.stock.total * Number(r.price ?? 0), 0);
+  const marginPct = totalSaleValue > 0 ? ((totalSaleValue - totalCostValue) / totalSaleValue) * 100 : 0;
   const lowCount = rows.filter((r) => r.stock.total > 0 && r.stock.total <= LOW_THRESHOLD).length;
   const zeroCount = rows.filter((r) => r.stock.total <= 0).length;
+
+  // Última sincronização global (max bling_synced_at em products)
+  const lastGlobalSync =
+    (products ?? [])
+      .map((p) => p.bling_synced_at)
+      .filter((d): d is string => !!d)
+      .sort()
+      .pop() ?? null;
 
   return (
     <div className="space-y-6 max-w-7xl">
@@ -98,22 +111,43 @@ export default async function EstoquePage({
         <div>
           <h1 className="font-display text-2xl font-semibold text-maxfem-ink">Estoque</h1>
           <p className="text-sm text-neutral-600 mt-0.5">
-            Saldo por SKU e depósito · sincronizado do Bling
+            Saldo contábil por SKU e depósito · sincronizado do Bling diariamente às 12h
+          </p>
+          <p className="text-xs text-neutral-500 mt-1">
+            Última sincronização:{' '}
+            {lastGlobalSync
+              ? new Date(lastGlobalSync).toLocaleString('pt-BR')
+              : 'nunca — clique em Sincronizar Bling agora'}
           </p>
         </div>
-        <Link
-          href="/integracoes/bling"
-          className="text-sm px-3 py-1.5 rounded-lg border border-ink-200 hover:bg-ink-50 transition"
-        >
-          Sincronização Bling →
-        </Link>
+        <div className="flex items-center gap-3">
+          <Link
+            href="/integracoes/bling"
+            className="text-sm px-3 py-1.5 rounded-lg border border-neutral-300 hover:border-maxfem-pink hover:text-maxfem-pink transition"
+          >
+            Integração Bling →
+          </Link>
+          <SyncBlingButton />
+        </div>
       </header>
 
-      {/* KPIs */}
-      <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
-        <KPI label="SKUs" value={String(totalSKUs)} />
+      {/* KPIs contábeis */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+        <KPI label="SKUs ativos" value={String(totalSKUs)} />
         <KPI label="Unidades em estoque" value={totalUnits.toLocaleString('pt-BR')} />
-        <KPI label="Valor em estoque (custo)" value={formatBRL(totalCostValue)} />
+        <KPI label="Valor a custo" value={formatBRL(totalCostValue)} />
+        <KPI label="Valor a preço de venda" value={formatBRL(totalSaleValue)} />
+      </div>
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+        <KPI
+          label="Margem teórica"
+          value={`${marginPct.toFixed(1)}%`}
+          accent={marginPct < 30 ? 'amber' : undefined}
+        />
+        <KPI
+          label="Lucro potencial bruto"
+          value={formatBRL(totalSaleValue - totalCostValue)}
+        />
         <KPI label="Estoque baixo" value={String(lowCount)} accent="amber" />
         <KPI label="Em ruptura" value={String(zeroCount)} accent="rose" />
       </div>
