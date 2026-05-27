@@ -12,7 +12,7 @@ export default function FiscalPage() {
         description="Geração dos arquivos fiscais e contábeis pro contador."
       />
       <ComingSoon
-        sprint="Sprint 10"
+        sprint="Sprint 15+ (planejada)"
         features={[
           'SPED Fiscal (EFD-ICMS/IPI) — escrituração de NFs',
           'SPED Contribuições (EFD-Contribuições) — PIS/COFINS',
