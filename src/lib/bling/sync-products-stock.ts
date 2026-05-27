@@ -40,13 +40,41 @@ export async function syncBlingProductsAndStock(admin: Admin): Promise<SyncProdu
     errorDetails: [],
   };
 
-  // 1. Orgs com Bling ativo
+  // 1. Orgs com Bling ativo — dedupe por client_id pra não sincronizar a
+  // mesma conta Bling duas vezes (cenário matriz+filial apontando pro
+  // mesmo Bling). Mantemos a primeira org por client_id.
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const { data: blingOrgs } = await (admin as any)
     .from('bling_credentials')
-    .select('organization_id')
-    .eq('active', true);
-  const orgIds: string[] = (blingOrgs ?? []).map((b: { organization_id: string }) => b.organization_id);
+    .select('organization_id, client_id, connected_at')
+    .eq('active', true)
+    .order('connected_at', { ascending: true });
+
+  const seenClientIds = new Set<string>();
+  const orgIds: string[] = [];
+  const skippedOrgIds: string[] = [];
+  for (const row of (blingOrgs ?? []) as Array<{ organization_id: string; client_id: string }>) {
+    if (seenClientIds.has(row.client_id)) {
+      skippedOrgIds.push(row.organization_id);
+      continue;
+    }
+    seenClientIds.add(row.client_id);
+    orgIds.push(row.organization_id);
+  }
+
+  // Limpeza: orgs deduplicadas têm cópias estale do mesmo catálogo Bling.
+  // Removemos só linhas Bling-sourced (bling_id IS NOT NULL) — manuais ficam.
+  if (skippedOrgIds.length > 0) {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    await (admin as any)
+      .from('products')
+      .delete()
+      .in('organization_id', skippedOrgIds)
+      .not('bling_id', 'is', null);
+    result.errorDetails?.push(
+      `dedupe: removidos produtos Bling de ${skippedOrgIds.length} org(s) duplicada(s)`,
+    );
+  }
 
   for (const orgId of orgIds) {
     result.organizations++;
@@ -140,25 +168,23 @@ export async function syncBlingProductsAndStock(admin: Admin): Promise<SyncProdu
       }
     }
 
-    // 2b. Saldos de estoque
+    // 2b. Saldos de estoque — /estoques/saldos exige idsProdutos[]; chamamos
+    // em batches a partir dos bling_ids dos produtos já sincronizados.
     const allBalances: BlingStockBalance[] = [];
-    cursor = null;
-    pageCount = 0;
-    do {
-      pageCount++;
-      if (pageCount > MAX_PAGES) break;
+    const allBlingIds = allProducts.map((p) => p.bling_id).filter(Boolean);
+    const BATCH_SIZE = 50;
+    for (let i = 0; i < allBlingIds.length; i += BATCH_SIZE) {
+      const batch = allBlingIds.slice(i, i + BATCH_SIZE);
       try {
-        const page = await provider.listStockBalances({ cursor, limit: 100 });
+        const page = await provider.listStockBalances({ productIds: batch });
         allBalances.push(...page.items);
-        cursor = page.hasMore ? page.cursor : null;
       } catch (err) {
         result.errors++;
         result.errorDetails?.push(
-          `list saldos org ${orgId.slice(0, 8)} p${pageCount}: ${err instanceof Error ? err.message : String(err)}`,
+          `saldos org ${orgId.slice(0, 8)} batch ${i / BATCH_SIZE + 1}: ${err instanceof Error ? err.message : String(err)}`,
         );
-        break;
       }
-    } while (cursor);
+    }
 
     // Upsert balances — UNIQUE (product_id, warehouse_bling_id)
     for (const b of allBalances) {

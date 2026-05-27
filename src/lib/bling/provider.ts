@@ -77,8 +77,12 @@ export interface BlingProvider {
   /** Lista produtos paginados. */
   listProducts(opts?: { cursor?: string | null; limit?: number }): Promise<BlingPage<BlingProduct>>;
 
-  /** Lista saldos de estoque paginados. */
-  listStockBalances(opts?: { cursor?: string | null; limit?: number }): Promise<BlingPage<BlingStockBalance>>;
+  /**
+   * Lista saldos de estoque. O endpoint `/estoques/saldos` do Bling v3
+   * exige `idsProdutos[]` — chame em batches a partir dos bling_ids
+   * obtidos via listProducts.
+   */
+  listStockBalances(opts: { productIds: string[]; limit?: number }): Promise<BlingPage<BlingStockBalance>>;
 
   /**
    * Lista NF-es de entrada (compras) num intervalo. Usado pra detectar NF

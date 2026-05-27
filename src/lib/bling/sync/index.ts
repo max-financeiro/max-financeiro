@@ -114,25 +114,31 @@ export async function syncStock(opts: {
     .single();
   if (jobError || !job) throw new Error(`Falha ao criar job: ${jobError?.message}`);
 
-  let cursor: string | null = null;
   let total = 0;
   try {
     await opts.provider.authenticate();
-    do {
-      const page = await opts.provider.listStockBalances({ cursor });
+    // /estoques/saldos exige idsProdutos[]; busca lote a partir do que já
+    // existe em products pra essa org.
+    const { data: prodRows } = await opts.admin
+      .from('products')
+      .select('id, sku, bling_id')
+      .eq('organization_id', opts.organizationId)
+      .not('bling_id', 'is', null);
+    const blingIds = (prodRows ?? []).map((p: { bling_id: string | null }) => p.bling_id).filter((x: string | null): x is string => !!x);
+    const productIdBySku = new Map<string, string>();
+    for (const r of prodRows ?? []) productIdBySku.set((r as { sku: string }).sku, (r as { id: string }).id);
+
+    const BATCH = 50;
+    for (let i = 0; i < blingIds.length; i += BATCH) {
+      const batch = blingIds.slice(i, i + BATCH);
+      const page = await opts.provider.listStockBalances({ productIds: batch });
       for (const s of page.items) {
-        // Acha o product_id pelo SKU dentro da organização
-        const { data: product } = await opts.admin
-          .from('products')
-          .select('id')
-          .eq('organization_id', opts.organizationId)
-          .eq('sku', s.sku)
-          .maybeSingle();
-        if (!product) continue;                    // SKU ainda não sincronizado, pula
+        const productId = productIdBySku.get(s.sku);
+        if (!productId) continue;
 
         await opts.admin.from('stock_balances').upsert(
           {
-            product_id: product.id,
+            product_id: productId,
             organization_id: opts.organizationId,
             warehouse_name: s.warehouse_name,
             warehouse_bling_id: s.warehouse_bling_id ?? null,
@@ -143,8 +149,7 @@ export async function syncStock(opts: {
         );
         total += 1;
       }
-      cursor = page.hasMore ? page.cursor : null;
-    } while (cursor);
+    }
 
     await opts.admin
       .from('bling_sync_queue')

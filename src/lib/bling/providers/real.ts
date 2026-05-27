@@ -92,15 +92,18 @@ export class RealBlingProvider implements BlingProvider {
     return { items, cursor: hasMore ? String(page + 1) : null, hasMore };
   }
 
-  async listStockBalances(opts: { cursor?: string | null; limit?: number } = {}): Promise<BlingPage<BlingStockBalance>> {
-    const page = parseInt(opts.cursor ?? '1', 10);
+  async listStockBalances(opts: { productIds: string[]; limit?: number }): Promise<BlingPage<BlingStockBalance>> {
+    // Bling v3 exige idsProdutos[] — sem isso devolve 400. Chamamos uma
+    // única requisição por batch (caller já controla tamanho do batch).
+    if (opts.productIds.length === 0) {
+      return { items: [], cursor: null, hasMore: false };
+    }
+    const qs = opts.productIds.map((id) => `idsProdutos[]=${encodeURIComponent(id)}`).join('&');
     const data = await this.get<{ data: Array<Record<string, unknown>> }>(
-      `/estoques/saldos?pagina=${page}&limite=${opts.limit ?? 100}`,
+      `/estoques/saldos?${qs}`,
     );
-
-    const items: BlingStockBalance[] = (data.data ?? []).map((s) => mapStock(s));
-    const hasMore = items.length === (opts.limit ?? 100);
-    return { items, cursor: hasMore ? String(page + 1) : null, hasMore };
+    const items: BlingStockBalance[] = (data.data ?? []).flatMap((s) => mapStockRow(s));
+    return { items, cursor: null, hasMore: false };
   }
 
   async listInboundInvoices(opts: {
@@ -267,16 +270,34 @@ function mapProduct(p: Record<string, unknown>): BlingProduct {
   };
 }
 
-function mapStock(s: Record<string, unknown>): BlingStockBalance {
+/**
+ * Bling v3 /estoques/saldos devolve, por produto, saldo total +
+ * (opcional) array `depositos`. Expandimos uma linha por depósito; se
+ * vier sem array, sintetizamos uma única linha consolidada.
+ */
+function mapStockRow(s: Record<string, unknown>): BlingStockBalance[] {
   const produto = (s.produto ?? {}) as Record<string, unknown>;
-  const deposito = (s.deposito ?? {}) as Record<string, unknown>;
-  return {
-    bling_product_id: String(produto.id ?? ''),
-    sku: String(produto.codigo ?? ''),
-    warehouse_name: typeof deposito.descricao === 'string' ? deposito.descricao : 'principal',
-    warehouse_bling_id: deposito.id ? String(deposito.id) : undefined,
+  const blingProductId = String(produto.id ?? '');
+  const sku = String(produto.codigo ?? '');
+  const depositos = Array.isArray(s.depositos) ? (s.depositos as Array<Record<string, unknown>>) : [];
+
+  if (depositos.length > 0) {
+    return depositos.map((d) => ({
+      bling_product_id: blingProductId,
+      sku,
+      warehouse_name: typeof d.descricao === 'string' && d.descricao ? d.descricao : `Depósito ${d.id ?? '?'}`,
+      warehouse_bling_id: d.id != null ? String(d.id) : undefined,
+      quantity: typeof d.saldoFisico === 'number' ? d.saldoFisico : 0,
+    }));
+  }
+
+  return [{
+    bling_product_id: blingProductId,
+    sku,
+    warehouse_name: 'Total',
+    warehouse_bling_id: undefined,
     quantity: typeof s.saldoFisicoTotal === 'number' ? s.saldoFisicoTotal : 0,
-  };
+  }];
 }
 
 function mapInvoice(n: Record<string, unknown>, direction: 'inbound' | 'outbound'): BlingInvoice {

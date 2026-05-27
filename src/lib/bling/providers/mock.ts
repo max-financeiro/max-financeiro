@@ -70,7 +70,7 @@ export class MockBlingProvider implements BlingProvider {
     return { items: MOCK_PRODUCTS, cursor: null, hasMore: false };
   }
 
-  async listStockBalances(): Promise<BlingPage<BlingStockBalance>> {
+  async listStockBalances(_opts: { productIds: string[]; limit?: number }): Promise<BlingPage<BlingStockBalance>> {
     return { items: MOCK_STOCK, cursor: null, hasMore: false };
   }
 
