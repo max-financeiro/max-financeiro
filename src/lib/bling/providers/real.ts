@@ -197,7 +197,13 @@ export class RealBlingProvider implements BlingProvider {
       p_encryption_key: this.opts.encryptionKey,
     });
     if (!data) return null;
-    const d = data as {
+    // RPC retorna TABLE (array de rows) — não objeto único.
+    // O cast pra .single() não foi usado, então PostgREST devolve array
+    // sempre, mesmo com 1 linha. Trata os dois shapes pra defender contra
+    // mudança futura de assinatura.
+    const row = Array.isArray(data) ? data[0] : data;
+    if (!row) return null;
+    const d = row as {
       client_id: string;
       client_secret: string;
       access_token: string | null;

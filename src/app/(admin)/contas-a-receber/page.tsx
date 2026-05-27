@@ -116,8 +116,8 @@ export default async function ContasAReceberPage({
         <div>
           <h1 className="text-2xl font-semibold text-maxfem-pink">Contas a Receber</h1>
           <p className="text-sm text-neutral-600 mt-1">
-            Entradas previstas e recebidas. MVP manual — integração Yampi pra criar AR automático
-            por pedido pago entra em sprint futura.
+            Entradas previstas e recebidas. Clica em <strong>Sincronizar Bling</strong> pra puxar as
+            NF-es de saída e criar AR automaticamente. Manual fica como fallback.
           </p>
         </div>
         {canMutate && (
@@ -193,12 +193,11 @@ export default async function ContasAReceberPage({
       )}
 
       <p className="text-xs text-neutral-500 mt-4">
-        Próximo passo: integração Yampi pra criar AR automático por pedido pago + matching com
-        créditos no extrato Inter (similar à{' '}
-        <Link href="/caixa/conciliacao" className="text-maxfem-pink hover:underline">
-          Conciliação
-        </Link>
-        ).
+        AR vem do <Link href="/integracoes/bling" className="text-maxfem-pink hover:underline">Bling</Link>{' '}
+        (cron diário 11:45 BRT). Próximo passo: matching automático entre AR e créditos no extrato
+        Inter (espelho da{' '}
+        <Link href="/caixa/conciliacao" className="text-maxfem-pink hover:underline">Conciliação</Link>{' '}
+        de débitos).
       </p>
     </div>
   );
