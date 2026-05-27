@@ -13,6 +13,7 @@ export function ConciliacaoFiltersForm({
   statusFilter,
   hasFilter,
   countLabel,
+  basePath = '/caixa/conciliacao',
 }: {
   empresas: Array<{ id: string; label: string }>;
   orgFilter: string | null;
@@ -21,6 +22,8 @@ export function ConciliacaoFiltersForm({
   statusFilter: StatusOpt;
   hasFilter: boolean;
   countLabel: string | null;
+  /** Pra reuso na pág AR — define o action do form + link "Limpar". Default = débito. */
+  basePath?: string;
 }) {
   const formRef = useRef<HTMLFormElement>(null);
   const autoSubmit = () => setTimeout(() => formRef.current?.requestSubmit(), 50);
@@ -89,7 +92,7 @@ export function ConciliacaoFiltersForm({
       </button>
       {hasFilter && (
         <Link
-          href="/caixa/conciliacao"
+          href={basePath}
           className="px-3 py-1.5 rounded-md text-sm text-neutral-600 hover:text-maxfem-pink"
         >
           Limpar

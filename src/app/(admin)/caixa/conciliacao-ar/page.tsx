@@ -1,13 +1,11 @@
 import Link from 'next/link';
 import { createClient } from '@/lib/supabase/server';
 import { redirect } from 'next/navigation';
-import { ConciliacaoFiltersForm } from './ConciliacaoFiltersForm';
-import { ConciliacaoRow } from './ConciliacaoRow';
-import { SyncNowButton } from './SyncNowButton';
+// Reusa o filtro de débito (parametrizado por basePath)
+import { ConciliacaoFiltersForm } from '../conciliacao/ConciliacaoFiltersForm';
+import { ConciliacaoArRow } from './ConciliacaoArRow';
 
 export const dynamic = 'force-dynamic';
-// Server Action syncNowAction chama Inter API + faz dezenas de queries;
-// default Vercel é 10s no Hobby. 300s = limite Pro.
 export const maxDuration = 300;
 
 type SearchParams = {
@@ -17,7 +15,7 @@ type SearchParams = {
   status?: 'unmatched' | 'matched' | 'ignored' | 'all';
 };
 
-export default async function ConciliacaoPage({
+export default async function ConciliacaoArPage({
   searchParams,
 }: {
   searchParams: Promise<SearchParams>;
@@ -25,9 +23,7 @@ export default async function ConciliacaoPage({
   const params = await searchParams;
   const supabase = await createClient();
 
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const { data: { user } } = await supabase.auth.getUser();
   if (!user) redirect('/login');
 
   const { data: profile } = await supabase
@@ -46,7 +42,6 @@ export default async function ConciliacaoPage({
   }
   const canMutate = role === 'master' || role === 'financial_manager';
 
-  // Filiais disponíveis pro dropdown
   const { data: orgs } = await supabase
     .from('organizations')
     .select('id, legal_name, trade_name, cnpj')
@@ -63,13 +58,14 @@ export default async function ConciliacaoPage({
   const toFilter = params.to || null;
   const statusFilter = (params.status as SearchParams['status']) ?? 'unmatched';
 
-  // bank_transactions ainda não está nos types gerados — cast localizado.
+  // Mostra SÓ créditos (type='credit'). Join com AR pra ver o que casou.
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   let query = (supabase as any)
     .from('bank_transactions')
     .select(
-      'id, organization_id, external_id, provider, transaction_date, amount, type, description, counterparty_name, counterparty_document, status, match_method, match_confidence, matched_payment_id, ignored_reason, payments(id, amount, payable_id, accounts_payable(reference_number, business_partners(legal_name)))',
+      'id, organization_id, external_id, provider, transaction_date, amount, type, description, counterparty_name, counterparty_document, status, match_method, match_confidence, matched_ar_id, ignored_reason, accounts_receivable!matched_ar_id(id, reference_number, amount, amount_received, status, description, business_partners!customer_id(legal_name, trade_name))',
     )
+    .eq('type', 'credit')
     .order('transaction_date', { ascending: false })
     .limit(200);
 
@@ -80,22 +76,30 @@ export default async function ConciliacaoPage({
 
   const { data: txs } = await query;
 
-  // Stats — usa contagem global (sem filtro de status) na mesma janela
+  // Stats: créditos no período
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   let statsQuery = (supabase as any)
     .from('bank_transactions')
-    .select('status, type, amount');
+    .select('status, amount')
+    .eq('type', 'credit');
   if (orgFilter) statsQuery = statsQuery.eq('organization_id', orgFilter);
   if (fromFilter) statsQuery = statsQuery.gte('transaction_date', fromFilter);
   if (toFilter) statsQuery = statsQuery.lte('transaction_date', toFilter);
   const { data: statRows } = await statsQuery;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const statArr = (statRows ?? []) as Array<{ status: string }>;
+  const statArr = (statRows ?? []) as Array<{ status: string; amount: number }>;
+  const sum = (arr: typeof statArr) => arr.reduce((a, r) => a + Number(r.amount || 0), 0);
+  const matchedArr = statArr.filter((r) => r.status === 'matched');
+  const unmatchedArr = statArr.filter((r) => r.status === 'unmatched');
+  const ignoredArr = statArr.filter((r) => r.status === 'ignored');
   const stats = {
     total: statArr.length,
-    matched: statArr.filter((r) => r.status === 'matched').length,
-    unmatched: statArr.filter((r) => r.status === 'unmatched').length,
-    ignored: statArr.filter((r) => r.status === 'ignored').length,
+    totalAmount: sum(statArr),
+    matched: matchedArr.length,
+    matchedAmount: sum(matchedArr),
+    unmatched: unmatchedArr.length,
+    unmatchedAmount: sum(unmatchedArr),
+    ignored: ignoredArr.length,
+    ignoredAmount: sum(ignoredArr),
   };
 
   const hasFilter = !!(orgFilter || fromFilter || toFilter || statusFilter !== 'unmatched');
@@ -104,28 +108,40 @@ export default async function ConciliacaoPage({
     <div className="max-w-6xl mx-auto p-6">
       <header className="flex items-start justify-between gap-4 mb-6">
         <div>
-          <h1 className="text-2xl font-semibold text-maxfem-pink">Conciliação Inter · Débitos</h1>
+          <h1 className="text-2xl font-semibold text-maxfem-pink">Conciliação Inter · Recebimentos</h1>
           <p className="text-sm text-neutral-600 mt-1">
-            Extrato bancário importado e cruzado com pagamentos do sistema. O cron diário roda às
-            10:30 — use o botão abaixo pra sincronizar agora.
+            Créditos no extrato cruzados com Contas a Receber pendentes. O cron diário casa
+            automaticamente — aqui você revisa os pendentes ou desfaz matches errados.
           </p>
         </div>
-        <div className="flex items-center gap-3">
-          <Link
-            href="/caixa/conciliacao-ar"
-            className="text-xs text-neutral-500 hover:text-maxfem-pink whitespace-nowrap"
-          >
-            Recebimentos →
-          </Link>
-          {canMutate && <SyncNowButton />}
-        </div>
+        <Link
+          href="/caixa/conciliacao"
+          className="text-xs text-neutral-500 hover:text-maxfem-pink whitespace-nowrap mt-1"
+        >
+          ← Ver débitos
+        </Link>
       </header>
 
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-5">
-        <StatCard label="Total no período" value={stats.total} />
-        <StatCard label="Auto-conciliadas" value={stats.matched} tone="ok" />
-        <StatCard label="Pendentes" value={stats.unmatched} tone="warn" />
-        <StatCard label="Ignoradas" value={stats.ignored} tone="muted" />
+        <StatCard label="Créditos no período" value={stats.total} amount={stats.totalAmount} />
+        <StatCard
+          label="Auto-conciliados"
+          value={stats.matched}
+          amount={stats.matchedAmount}
+          tone="ok"
+        />
+        <StatCard
+          label="Pendentes"
+          value={stats.unmatched}
+          amount={stats.unmatchedAmount}
+          tone="warn"
+        />
+        <StatCard
+          label="Ignorados"
+          value={stats.ignored}
+          amount={stats.ignoredAmount}
+          tone="muted"
+        />
       </div>
 
       <ConciliacaoFiltersForm
@@ -135,15 +151,16 @@ export default async function ConciliacaoPage({
         toFilter={toFilter}
         statusFilter={statusFilter}
         hasFilter={hasFilter}
-        countLabel={txs && txs.length > 0 ? `${txs.length} exibidas (limite 200)` : null}
+        countLabel={txs && txs.length > 0 ? `${txs.length} exibidos (limite 200)` : null}
+        basePath="/caixa/conciliacao-ar"
       />
 
       {!txs || txs.length === 0 ? (
         <div className="bg-white rounded-lg border border-neutral-200 p-12 text-center">
           <p className="text-neutral-700 font-medium">
             {hasFilter
-              ? 'Nenhuma transação com esses filtros'
-              : 'Nada pendente — todas as transações estão conciliadas.'}
+              ? 'Nenhum crédito com esses filtros'
+              : 'Nada pendente — todos os recebimentos estão conciliados.'}
           </p>
         </div>
       ) : (
@@ -152,9 +169,8 @@ export default async function ConciliacaoPage({
             <thead className="bg-neutral-50 text-xs uppercase text-neutral-500">
               <tr>
                 <th className="text-left px-4 py-2">Data</th>
-                <th className="text-left px-4 py-2">Descrição</th>
+                <th className="text-left px-4 py-2">Descrição / Pagador</th>
                 <th className="text-right px-4 py-2">Valor</th>
-                <th className="text-left px-4 py-2">Tipo</th>
                 <th className="text-left px-4 py-2">Status</th>
                 <th className="text-right px-4 py-2">Ações</th>
               </tr>
@@ -162,7 +178,7 @@ export default async function ConciliacaoPage({
             <tbody>
               {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
               {(txs as any[]).map((tx) => (
-                <ConciliacaoRow key={tx.id} tx={tx} canMutate={canMutate} />
+                <ConciliacaoArRow key={tx.id} tx={tx} canMutate={canMutate} />
               ))}
             </tbody>
           </table>
@@ -170,7 +186,9 @@ export default async function ConciliacaoPage({
       )}
 
       <p className="text-xs text-neutral-500 mt-4">
-        Export contábil mensal em <Link href="/caixa/conciliacao/export" className="text-maxfem-pink hover:underline">/caixa/conciliacao/export</Link>.
+        Casamentos automáticos usam motor em <code className="text-[10px]">src/lib/conciliacao/match-ar.ts</code>:
+        valor exato + CPF/CNPJ do depositante OU due_date com janela ±15 dias. Ambiguidade fica
+        pendente pra decisão manual.
       </p>
     </div>
   );
@@ -181,10 +199,12 @@ export default async function ConciliacaoPage({
 function StatCard({
   label,
   value,
+  amount,
   tone = 'default',
 }: {
   label: string;
   value: number;
+  amount?: number;
   tone?: 'default' | 'ok' | 'warn' | 'muted';
 }) {
   const numCls =
@@ -199,6 +219,11 @@ function StatCard({
     <div className="bg-white border border-neutral-200 rounded-lg p-4">
       <div className="text-[10px] uppercase tracking-wider text-neutral-500 font-semibold">{label}</div>
       <div className={`font-display text-2xl font-semibold mt-1 ${numCls}`}>{value}</div>
+      {amount !== undefined && amount > 0 && (
+        <div className="text-xs text-neutral-500 mt-0.5">
+          {amount.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
+        </div>
+      )}
     </div>
   );
 }
