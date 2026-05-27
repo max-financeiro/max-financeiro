@@ -59,73 +59,86 @@ export async function syncBlingReceivables(
     errorDetails: [],
   };
 
-  // Acha alguma org com Bling credentials ativa pra usar como tenant da
-  // chamada API. RealBlingProvider precisa de orgId pra carregar token.
-  // Mock ignora. Se mais de uma org tiver Bling, sync separado por org
-  // fica pra futuro.
+  // Pega TODAS as orgs com Bling ativo. Cada org tem seu próprio token e
+  // suas próprias NFs no Bling. Itera uma de cada vez: autentica, lista NFs
+  // daquela org, e usa a PRÓPRIA org como issuer (Maxfem emite suas próprias
+  // NFs — não tem como uma filial emitir pra outra).
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const { data: blingOrg } = await (admin as any)
+  const { data: blingOrgs } = await (admin as any)
     .from('bling_credentials')
     .select('organization_id')
-    .eq('active', true)
-    .limit(1)
-    .maybeSingle();
-  const blingOrgId: string = blingOrg?.organization_id ?? 'mock-no-org';
+    .eq('active', true);
+  const blingOrgIds: string[] = (blingOrgs ?? []).map((b: { organization_id: string }) => b.organization_id);
 
-  let provider;
-  try {
-    provider = createBlingProvider(blingOrgId);
-    await provider.authenticate();
-  } catch (err) {
-    result.errors++;
-    result.errorDetails?.push(`bling_auth: ${err instanceof Error ? err.message : String(err)}`);
-    return result;
+  if (blingOrgIds.length === 0) {
+    // Modo mock pra dev — usa placeholder, tratado pelo MockBlingProvider
+    blingOrgIds.push('mock-no-org');
   }
 
-  // Paginação até o fim
-  const allInvoices: BlingInvoice[] = [];
-  let cursor: string | null = null;
-  let pageCount = 0;
-  const MAX_PAGES = 50;
+  // Carrega metadados das orgs (CNPJ, nome) pra resolver issuer corretamente
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  let page: any;
-  do {
-    pageCount++;
-    if (pageCount > MAX_PAGES) {
-      result.errorDetails?.push(`paginação truncada em ${MAX_PAGES} páginas`);
-      break;
-    }
-    try {
-      page = await provider.listOutboundInvoices({
-        startDate: opts.startDate,
-        endDate: opts.endDate,
-        cursor,
-        limit: 100,
-      });
-      allInvoices.push(...page.items);
-      cursor = page.hasMore ? page.cursor : null;
-    } catch (err) {
-      result.errors++;
-      result.errorDetails?.push(
-        `list_page ${pageCount}: ${err instanceof Error ? err.message : String(err)}`,
-      );
-      break;
-    }
-  } while (cursor);
-
-  result.totalFetched = allInvoices.length;
-
-  // Cache filiais Maxfem por CNPJ — evita repetir lookup
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const { data: orgs } = await (admin as any)
+  const { data: allOrgs } = await (admin as any)
     .from('organizations')
     .select('id, cnpj, legal_name, parent_id, type')
     .in('type', ['company', 'branch'])
     .is('deleted_at', null);
-  const orgByCnpj = new Map<string, { id: string; legal_name: string }>();
-  for (const o of orgs ?? []) {
-    if (o.cnpj) orgByCnpj.set(digits(o.cnpj), { id: o.id, legal_name: o.legal_name });
+  const orgMetaById = new Map<string, { id: string; cnpj: string | null; legal_name: string }>();
+  for (const o of allOrgs ?? []) {
+    orgMetaById.set(o.id, { id: o.id, cnpj: o.cnpj ?? null, legal_name: o.legal_name });
   }
+
+  // Coleta NFs de TODAS as orgs Bling, com referência ao issuer (a própria org)
+  interface InvoiceWithIssuer { inv: BlingInvoice; issuerOrgId: string; issuerCnpj: string | null; issuerName: string }
+  const allInvoices: InvoiceWithIssuer[] = [];
+
+  for (const blingOrgId of blingOrgIds) {
+    const meta = orgMetaById.get(blingOrgId);
+    const issuerCnpj = meta?.cnpj ?? null;
+    const issuerName = meta?.legal_name ?? '';
+
+    let provider;
+    try {
+      provider = createBlingProvider(blingOrgId);
+      await provider.authenticate();
+    } catch (err) {
+      result.errors++;
+      result.errorDetails?.push(`bling_auth org ${blingOrgId.slice(0, 8)}: ${err instanceof Error ? err.message : String(err)}`);
+      continue;
+    }
+
+    let cursor: string | null = null;
+    let pageCount = 0;
+    const MAX_PAGES = 50;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    let page: any;
+    do {
+      pageCount++;
+      if (pageCount > MAX_PAGES) {
+        result.errorDetails?.push(`org ${blingOrgId.slice(0, 8)}: paginação truncada em ${MAX_PAGES} páginas`);
+        break;
+      }
+      try {
+        page = await provider.listOutboundInvoices({
+          startDate: opts.startDate,
+          endDate: opts.endDate,
+          cursor,
+          limit: 100,
+        });
+        for (const inv of page.items) {
+          allInvoices.push({ inv, issuerOrgId: blingOrgId, issuerCnpj, issuerName });
+        }
+        cursor = page.hasMore ? page.cursor : null;
+      } catch (err) {
+        result.errors++;
+        result.errorDetails?.push(
+          `list_page org ${blingOrgId.slice(0, 8)} p${pageCount}: ${err instanceof Error ? err.message : String(err)}`,
+        );
+        break;
+      }
+    } while (cursor);
+  }
+
+  result.totalFetched = allInvoices.length;
 
   // group_id pra criar clientes novos (business_partners precisa).
   // Pega o primeiro grupo Maxfem cadastrado.
@@ -147,14 +160,16 @@ export async function syncBlingReceivables(
 
   const defaultDueDays = opts.defaultDueDaysAfterIssue ?? 0;
 
-  for (const inv of allInvoices) {
+  for (const { inv, issuerOrgId, issuerCnpj, issuerName } of allInvoices) {
     try {
-      const issuerCnpj = digits(inv.issuer_document);
-      const org = orgByCnpj.get(issuerCnpj);
+      const org = orgMetaById.get(issuerOrgId);
       if (!org) {
         result.skippedNoOrg++;
         continue;
       }
+      // CNPJ do issuer vem da org (não do payload Bling — em NF outbound o
+      // `contato` é o cliente, não a Maxfem).
+      const issuerCnpjDigits = issuerCnpj ? digits(issuerCnpj) : '';
 
       // 1. Upsert fiscal_documents
       let fiscalDocId: string | null = null;
@@ -184,8 +199,8 @@ export async function syncBlingReceivables(
             series: inv.series ?? null,
             issue_date: inv.issue_date,
             competence_date: inv.issue_date,
-            issuer_document: issuerCnpj,
-            issuer_name: inv.issuer_name,
+            issuer_document: issuerCnpjDigits,
+            issuer_name: issuerName,
             recipient_document: digits(inv.recipient_document),
             recipient_name: inv.recipient_name ?? null,
             total_amount: inv.total_amount,

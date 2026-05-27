@@ -281,16 +281,24 @@ function mapStock(s: Record<string, unknown>): BlingStockBalance {
 
 function mapInvoice(n: Record<string, unknown>, direction: 'inbound' | 'outbound'): BlingInvoice {
   const contato = (n.contato ?? {}) as Record<string, unknown>;
+  // No Bling, "contato" SEMPRE é a contraparte da NF — não o emissor:
+  //   - NF inbound (compra/E): contato = fornecedor (emissor da NF, recipient=Maxfem)
+  //   - NF outbound (venda/S): contato = cliente (recipient, issuer=Maxfem)
+  // Por isso o mapping precisa ser inverso de acordo com a direção. O CNPJ
+  // da Maxfem emissora (pra outbound) NÃO vem no list — quem chama o sync
+  // sabe qual organization está conectada no Bling e usa esse CNPJ.
+  const contatoDoc = String(contato.numeroDocumento ?? '').replace(/\D/g, '');
+  const contatoNome = String(contato.nome ?? '');
   return {
     bling_id: String(n.id ?? ''),
     access_key: typeof n.chaveAcesso === 'string' ? n.chaveAcesso : undefined,
     number: String(n.numero ?? ''),
     series: typeof n.serie === 'string' ? n.serie : undefined,
     issue_date: String(n.dataEmissao ?? '').slice(0, 10),
-    issuer_document: String(contato.numeroDocumento ?? '').replace(/\D/g, ''),
-    issuer_name: String(contato.nome ?? ''),
-    recipient_document: '',                          // Bling não retorna no list; vem do detalhe
-    recipient_name: undefined,
+    issuer_document: direction === 'inbound' ? contatoDoc : '',    // outbound: preenche no sync
+    issuer_name: direction === 'inbound' ? contatoNome : '',
+    recipient_document: direction === 'outbound' ? contatoDoc : '',
+    recipient_name: direction === 'outbound' ? contatoNome : undefined,
     total_amount: typeof n.totalNota === 'number' ? n.totalNota : 0,
     direction,
     raw: n,

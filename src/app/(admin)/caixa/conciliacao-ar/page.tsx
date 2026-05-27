@@ -4,6 +4,7 @@ import { redirect } from 'next/navigation';
 // Reusa o filtro de débito (parametrizado por basePath)
 import { ConciliacaoFiltersForm } from '../conciliacao/ConciliacaoFiltersForm';
 import { ConciliacaoArRow } from './ConciliacaoArRow';
+import { RematchButton } from './RematchButton';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 300;
@@ -114,12 +115,15 @@ export default async function ConciliacaoArPage({
             automaticamente — aqui você revisa os pendentes ou desfaz matches errados.
           </p>
         </div>
-        <Link
-          href="/caixa/conciliacao"
-          className="text-xs text-neutral-500 hover:text-maxfem-pink whitespace-nowrap mt-1"
-        >
-          ← Ver débitos
-        </Link>
+        <div className="flex items-center gap-3 mt-1">
+          {canMutate && <RematchButton />}
+          <Link
+            href="/caixa/conciliacao"
+            className="text-xs text-neutral-500 hover:text-maxfem-pink whitespace-nowrap"
+          >
+            ← Ver débitos
+          </Link>
+        </div>
       </header>
 
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-5">

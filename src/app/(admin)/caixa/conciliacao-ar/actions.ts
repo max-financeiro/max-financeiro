@@ -9,6 +9,7 @@ import { createClient } from '@/lib/supabase/server';
 // eslint-disable-next-line no-restricted-imports
 import { getAdminClient } from '@/lib/supabase/admin';
 import { logAuditEvent } from '@/lib/auth/audit';
+import { rematchUnmatched } from '@/lib/conciliacao/rematch';
 
 type Role = 'master' | 'financial_manager' | 'financial_analyst' | 'accountant_readonly' | 'supplier';
 
@@ -357,4 +358,51 @@ export async function suggestArsForTransactionAction(bankTransactionId: string):
     });
 
   return { ok: true, suggestions };
+}
+
+// ============================================================
+// Re-roda matching nas transações unmatched antigas (créditos)
+// Útil após criação de novos ARs OU após fix do motor — destrava
+// casamentos pendentes sem precisar re-importar extrato.
+// ============================================================
+export async function rematchUnmatchedAction(
+  _prev: ActionState,
+  _formData: FormData,
+): Promise<
+  | { ok: false; error: string }
+  | { ok: true; message: string }
+> {
+  const auth = await requireMasterOrManager();
+  if (!auth.ok) return { ok: false, error: auth.error };
+
+  const admin = getAdminClient();
+  const supabase = await createClient();
+
+  const r = await rematchUnmatched(admin, { type: 'credit', limit: 1000 });
+
+  await logAuditEvent(supabase, {
+    action: 'conciliacao_ar.rematch_unmatched',
+    entityType: 'bank_transactions',
+    afterState: {
+      scanned: r.scanned,
+      matched_credit: r.matchedCredit,
+      still_unmatched: r.stillUnmatched,
+      errors: r.errors,
+      role: auth.role,
+    },
+  });
+
+  revalidatePath('/caixa/conciliacao-ar');
+  revalidatePath('/contas-a-receber');
+
+  if (r.errors > 0) {
+    return {
+      ok: false,
+      error: `Rematch com ${r.errors} erro(s). Escaneadas: ${r.scanned}, casadas: ${r.matchedCredit}.`,
+    };
+  }
+  return {
+    ok: true,
+    message: `Rematch concluído: ${r.scanned} escaneadas, ${r.matchedCredit} casadas com AR, ${r.stillUnmatched} ainda pendentes.`,
+  };
 }
