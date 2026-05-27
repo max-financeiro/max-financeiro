@@ -68,7 +68,10 @@ const SECTIONS: Section[] = [
   },
   {
     title: 'Governança',
-    items: [{ href: '/auditoria', label: 'Auditoria' }],
+    items: [
+      { href: '/governanca/fechamento', label: 'Fechamento mensal' },
+      { href: '/auditoria', label: 'Auditoria' },
+    ],
   },
 ];
 
