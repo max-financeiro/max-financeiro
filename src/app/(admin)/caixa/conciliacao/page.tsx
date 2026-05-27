@@ -112,12 +112,21 @@ export default async function ConciliacaoPage({
         </div>
         <div className="flex items-center gap-3">
           {canMutate && (
-            <Link
-              href="/caixa/import"
-              className="text-xs px-2 py-1 rounded-md border border-neutral-300 text-neutral-700 hover:border-maxfem-pink hover:text-maxfem-pink whitespace-nowrap"
-            >
-              Importar OFX/CSV
-            </Link>
+            <>
+              <Link
+                href="/integracoes/inter/webhooks"
+                className="text-xs px-2 py-1 rounded-md border border-emerald-300 text-emerald-700 hover:border-emerald-500 hover:bg-emerald-50 whitespace-nowrap"
+                title="Webhook realtime do Inter"
+              >
+                ⚡ Webhooks
+              </Link>
+              <Link
+                href="/caixa/import"
+                className="text-xs px-2 py-1 rounded-md border border-neutral-300 text-neutral-700 hover:border-maxfem-pink hover:text-maxfem-pink whitespace-nowrap"
+              >
+                Importar OFX/CSV
+              </Link>
+            </>
           )}
           <Link
             href="/caixa/conciliacao-ar"
