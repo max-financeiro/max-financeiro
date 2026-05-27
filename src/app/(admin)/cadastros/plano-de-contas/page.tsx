@@ -40,9 +40,17 @@ export default async function PlanoDeContasPage() {
             sintéticas só agrupam.
           </p>
         </div>
-        <Link href="/cadastros/plano-de-contas/nova" className="btn-primary">
-          + Nova conta
-        </Link>
+        <div className="flex items-center gap-2">
+          <Link
+            href="/cadastros/plano-de-contas/sugestoes"
+            className="text-xs px-3 py-1.5 rounded-md border border-maxfem-pink text-maxfem-pink hover:bg-maxfem-pink hover:text-white transition"
+          >
+            ✦ Sugestões IA
+          </Link>
+          <Link href="/cadastros/plano-de-contas/nova" className="btn-primary">
+            + Nova conta
+          </Link>
+        </div>
       </header>
 
       {error && (
