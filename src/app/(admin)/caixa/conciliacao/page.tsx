@@ -111,6 +111,14 @@ export default async function ConciliacaoPage({
           </p>
         </div>
         <div className="flex items-center gap-3">
+          {canMutate && (
+            <Link
+              href="/caixa/import"
+              className="text-xs px-2 py-1 rounded-md border border-neutral-300 text-neutral-700 hover:border-maxfem-pink hover:text-maxfem-pink whitespace-nowrap"
+            >
+              Importar OFX/CSV
+            </Link>
+          )}
           <Link
             href="/caixa/conciliacao-ar"
             className="text-xs text-neutral-500 hover:text-maxfem-pink whitespace-nowrap"
