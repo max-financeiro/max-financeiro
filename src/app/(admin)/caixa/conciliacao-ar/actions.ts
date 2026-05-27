@@ -334,17 +334,18 @@ export async function suggestArsForTransactionAction(bankTransactionId: string):
   }
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const suggestions = (candidates ?? [])
-    .filter((c: any) => !already.has(c.id))
+  type CandidateRow = any;
+  const suggestions = ((candidates ?? []) as CandidateRow[])
+    .filter((c) => !already.has(c.id))
     // Prioriza valor exato, depois proximidade do due_date
-    .sort((a: any, b: any) => {
+    .sort((a, b) => {
       const exactA = Math.abs(Number(a.amount_pending) - txAmount) < 0.01 ? 0 : 1;
       const exactB = Math.abs(Number(b.amount_pending) - txAmount) < 0.01 ? 0 : 1;
       if (exactA !== exactB) return exactA - exactB;
       return new Date(a.due_date).getTime() - new Date(b.due_date).getTime();
     })
     .slice(0, 20)
-    .map((c: any) => {
+    .map((c) => {
       const customer = c.business_partners?.trade_name || c.business_partners?.legal_name || 'sem cliente';
       const pending = Number(c.amount_pending);
       const ref = c.reference_number || c.id.slice(0, 8);

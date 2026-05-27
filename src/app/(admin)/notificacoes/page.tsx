@@ -1,4 +1,3 @@
-import Link from 'next/link';
 import { createClient } from '@/lib/supabase/server';
 import { redirect } from 'next/navigation';
 import { RuleEditor } from './RuleEditor';
@@ -49,10 +48,6 @@ const EVENT_META: Record<EventType, { label: string; description: string; paramH
     paramHint: '{}',
   },
 };
-
-function brl(n: number | string | null | undefined): string {
-  return Number(n ?? 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
-}
 
 function fmtDate(iso: string | null): string {
   if (!iso) return '—';

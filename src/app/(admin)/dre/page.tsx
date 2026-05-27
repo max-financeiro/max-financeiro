@@ -296,7 +296,7 @@ export default async function DrePage({
 
       <p className="text-xs text-neutral-500 mt-4">
         Período aplica em <code className="text-[10px]">competence_date</code>. Lançamentos sem plano
-        de contas cadastrado aparecem como "—" (cadastra em /cadastros/plano-de-contas). Comparativo:
+        de contas cadastrado aparecem como &ldquo;—&rdquo; (cadastra em /cadastros/plano-de-contas). Comparativo:
         mesmo intervalo no mês anterior.
       </p>
     </div>

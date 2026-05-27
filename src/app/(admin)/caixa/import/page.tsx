@@ -79,7 +79,7 @@ export default async function CaixaImportPage() {
           </li>
           <li>
             Para CSV: escolha o banco certo no profile pra mapear as colunas corretamente. Se o
-            banco não estiver listado, escolha "Outro" e configure as colunas manualmente (em
+            banco não estiver listado, escolha &ldquo;Outro&rdquo; e configure as colunas manualmente (em
             sprint futura).
           </li>
           <li>

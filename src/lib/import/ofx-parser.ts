@@ -67,7 +67,6 @@ function parseTxBlock(block: string): BankTransaction | null {
   const trnamt = extractTagValue(block, 'TRNAMT');
   const memo = extractTagValue(block, 'MEMO') ?? '';
   const name = extractTagValue(block, 'NAME') ?? '';
-  const checknum = extractTagValue(block, 'CHECKNUM') ?? '';
   const trntype = extractTagValue(block, 'TRNTYPE') ?? '';
 
   if (!fitid || !dtposted || !trnamt) return null;
