@@ -13,6 +13,7 @@ import 'server-only';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { getPaymentProvider } from '@/lib/payments/factory';
 import { findMatchForBankTransaction } from './match';
+import { findArMatchForBankTransaction } from './match-ar';
 import type { BankTransaction } from '@/lib/payments/provider';
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -31,7 +32,8 @@ export interface SyncResult {
   totalFetched: number;
   imported: number;
   skippedDuplicate: number;
-  autoMatched: number;
+  autoMatched: number;          // débitos casados com payments
+  autoMatchedAr: number;        // créditos casados com accounts_receivable
   unmatched: number;
   errors: number;
   errorDetails?: string[];
@@ -49,6 +51,7 @@ export async function syncInterExtract(admin: Admin, opts: SyncOpts): Promise<Sy
     imported: 0,
     skippedDuplicate: 0,
     autoMatched: 0,
+    autoMatchedAr: 0,
     unmatched: 0,
     errors: 0,
     errorDetails: [],
@@ -111,10 +114,11 @@ export async function syncInterExtract(admin: Admin, opts: SyncOpts): Promise<Sy
     }
     result.imported++;
 
-    // Crédito (recebimento) — não tem payment correspondente nosso, fica
-    // como unmatched mesmo. Quem chama findMatch já filtra type.
+    // Matching fork:
+    //   debit  → findMatchForBankTransaction (vs payments outbound)
+    //   credit → findArMatchForBankTransaction (vs accounts_receivable)
     try {
-      const match = await findMatchForBankTransaction(admin, {
+      const txForMatch = {
         organizationId: opts.organizationId,
         externalId: tx.externalId,
         amount: Math.abs(tx.amount),
@@ -122,23 +126,86 @@ export async function syncInterExtract(admin: Admin, opts: SyncOpts): Promise<Sy
         type: tx.type,
         endToEndId: null,
         counterpartyDocument: tx.counterpartDocument ?? null,
-      });
+      };
 
-      if (match) {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        await (admin as any)
-          .from('bank_transactions')
-          .update({
-            matched_payment_id: match.paymentId,
-            match_method: match.method,
-            match_confidence: match.confidence,
-            matched_at: new Date().toISOString(),
-            status: 'matched',
-          })
-          .eq('id', inserted.id);
-        result.autoMatched++;
+      if (tx.type === 'credit') {
+        const arMatch = await findArMatchForBankTransaction(admin, txForMatch);
+        if (arMatch) {
+          // 1. Marca bank_transaction como matched ao AR
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          const { error: updTxErr } = await (admin as any)
+            .from('bank_transactions')
+            .update({
+              matched_ar_id: arMatch.arId,
+              match_method: arMatch.method,
+              match_confidence: arMatch.confidence,
+              matched_at: new Date().toISOString(),
+              status: 'matched',
+            })
+            .eq('id', inserted.id);
+
+          if (updTxErr) {
+            result.errors++;
+            result.errorDetails?.push(`upd-tx ${tx.externalId}: ${updTxErr.message}`);
+            continue;
+          }
+
+          // 2. Side-effect: aumenta amount_received do AR e fecha se quitou.
+          //    Lê AR pra ver saldo atual (evita race com outra conciliação).
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          const { data: ar } = await (admin as any)
+            .from('accounts_receivable')
+            .select('amount, amount_received, status, receive_method')
+            .eq('id', arMatch.arId)
+            .single();
+
+          if (ar) {
+            const txAmount = Math.abs(tx.amount);
+            const newReceived = Number(ar.amount_received || 0) + txAmount;
+            const total = Number(ar.amount);
+            const fullyReceived = newReceived + 0.005 >= total;
+
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            const { error: updArErr } = await (admin as any)
+              .from('accounts_receivable')
+              .update({
+                amount_received: newReceived,
+                status: fullyReceived ? 'received' : 'partially_received',
+                received_at: fullyReceived ? new Date().toISOString() : null,
+                // Inter: tudo via PIX hoje. Se já tinha receive_method, mantém.
+                receive_method: ar.receive_method ?? 'pix',
+                bank_account_id: opts.bankAccountId ?? undefined,
+              })
+              .eq('id', arMatch.arId);
+
+            if (updArErr) {
+              result.errorDetails?.push(`upd-ar ${arMatch.arId}: ${updArErr.message}`);
+            }
+          }
+
+          result.autoMatchedAr++;
+        } else {
+          result.unmatched++;
+        }
       } else {
-        result.unmatched++;
+        // débito — match contra payments outbound
+        const match = await findMatchForBankTransaction(admin, txForMatch);
+        if (match) {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          await (admin as any)
+            .from('bank_transactions')
+            .update({
+              matched_payment_id: match.paymentId,
+              match_method: match.method,
+              match_confidence: match.confidence,
+              matched_at: new Date().toISOString(),
+              status: 'matched',
+            })
+            .eq('id', inserted.id);
+          result.autoMatched++;
+        } else {
+          result.unmatched++;
+        }
       }
     } catch (err) {
       result.errors++;
