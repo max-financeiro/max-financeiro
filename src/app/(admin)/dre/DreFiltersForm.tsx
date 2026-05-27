@@ -5,7 +5,9 @@ import { useRef } from 'react';
 
 interface Props {
   empresas: Array<{ id: string; label: string }>;
+  costCenters?: Array<{ id: string; label: string }>;
   orgFilter: string | null;
+  ccFilter?: string | null;
   fromFilter: string;
   toFilter: string;
 }
@@ -27,7 +29,14 @@ function presetRanges() {
   ];
 }
 
-export function DreFiltersForm({ empresas, orgFilter, fromFilter, toFilter }: Props) {
+export function DreFiltersForm({
+  empresas,
+  costCenters = [],
+  orgFilter,
+  ccFilter,
+  fromFilter,
+  toFilter,
+}: Props) {
   const formRef = useRef<HTMLFormElement>(null);
   const presets = presetRanges();
 
@@ -37,7 +46,7 @@ export function DreFiltersForm({ empresas, orgFilter, fromFilter, toFilter }: Pr
       method="GET"
       className="flex flex-wrap items-end gap-3 bg-white border border-neutral-200 rounded-lg p-4"
     >
-      <div className="flex-1 min-w-[200px]">
+      <div className="flex-1 min-w-[180px]">
         <label className="block text-xs uppercase text-neutral-500 mb-1">Empresa</label>
         <select
           name="org"
@@ -50,6 +59,22 @@ export function DreFiltersForm({ empresas, orgFilter, fromFilter, toFilter }: Pr
           ))}
         </select>
       </div>
+
+      {costCenters.length > 0 && (
+        <div className="flex-1 min-w-[180px]">
+          <label className="block text-xs uppercase text-neutral-500 mb-1">Centro de custo</label>
+          <select
+            name="cc"
+            defaultValue={ccFilter ?? 'all'}
+            className="w-full rounded-md border border-neutral-300 px-3 py-1.5 text-sm focus:border-maxfem-pink focus:outline-none"
+          >
+            <option value="all">Todos</option>
+            {costCenters.map((c) => (
+              <option key={c.id} value={c.id}>{c.label}</option>
+            ))}
+          </select>
+        </div>
+      )}
 
       <div>
         <label className="block text-xs uppercase text-neutral-500 mb-1">De</label>
@@ -85,6 +110,7 @@ export function DreFiltersForm({ empresas, orgFilter, fromFilter, toFilter }: Pr
             key={p.label}
             href={`/dre?${new URLSearchParams({
               ...(orgFilter ? { org: orgFilter } : {}),
+              ...(ccFilter ? { cc: ccFilter } : {}),
               from: p.from,
               to: p.to,
             }).toString()}`}

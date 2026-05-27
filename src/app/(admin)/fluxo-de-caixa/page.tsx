@@ -104,6 +104,52 @@ export default async function FluxoDeCaixaPage() {
   // Agrupa próximos 30d por semana (ISO week) — visual de pressão por semana
   const buckets = bucketByWeek(due30, today, in30);
 
+  // ============ PROJEÇÃO 90 DIAS via RPC cashflow_projection ============
+  // Pega o grupo Maxfem pra alimentar a RPC. Saída: dia-a-dia com
+  // inflow/outflow/net/running_balance.
+  const { data: group } = await supabase
+    .from('organizations')
+    .select('id')
+    .eq('type', 'group')
+    .is('deleted_at', null)
+    .limit(1)
+    .maybeSingle();
+
+  interface ProjDay {
+    date: string;
+    inflow: number;
+    outflow: number;
+    net: number;
+    running_balance: number;
+  }
+  let projection: ProjDay[] = [];
+  if (group) {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const { data } = await (supabase as any).rpc('cashflow_projection', {
+      p_group_id: group.id,
+      p_organization_id: null,
+      p_days_ahead: 90,
+    });
+    projection = (data ?? []).map((r: ProjDay) => ({
+      date: r.date,
+      inflow: Number(r.inflow ?? 0),
+      outflow: Number(r.outflow ?? 0),
+      net: Number(r.net ?? 0),
+      running_balance: Number(r.running_balance ?? 0),
+    }));
+  }
+  // Marcos: saldo em +30/+60/+90 dias (running)
+  const milestone = (days: number): number => {
+    const target = addDays(today, days);
+    const row = [...projection].reverse().find((r) => r.date <= target);
+    return row?.running_balance ?? 0;
+  };
+  const balance30 = milestone(30);
+  const balance60 = milestone(60);
+  const balance90 = milestone(90);
+  // Agrupa projeção por semana pro gráfico — soma inflow/outflow + último running da semana
+  const projWeeks = projection.length > 0 ? bucketProjectionByWeek(projection) : [];
+
   return (
     <div className="max-w-6xl mx-auto p-6">
       <header className="mb-6">
@@ -245,6 +291,76 @@ export default async function FluxoDeCaixaPage() {
           </div>
         )}
       </section>
+
+      {/* ============ PROJEÇÃO 90 DIAS ============ */}
+      {projection.length > 0 && (
+        <section className="bg-white border border-neutral-200 rounded-lg p-5 mt-4">
+          <div className="flex items-start justify-between mb-3">
+            <div>
+              <h2 className="font-display text-base font-semibold text-maxfem-ink">
+                Projeção 90 dias
+              </h2>
+              <p className="text-xs text-neutral-500">
+                Saldo acumulado dia-a-dia considerando AR pendentes + AP em aberto. Não inclui
+                saldo atual do banco — é o efeito líquido sobre o caixa.
+              </p>
+            </div>
+          </div>
+
+          {/* Marcos */}
+          <div className="grid grid-cols-3 gap-3 mb-5">
+            <Milestone label="Em 30 dias" value={balance30} />
+            <Milestone label="Em 60 dias" value={balance60} />
+            <Milestone label="Em 90 dias" value={balance90} />
+          </div>
+
+          {/* Tabela semanal */}
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead className="bg-neutral-50 text-xs uppercase text-neutral-500">
+                <tr>
+                  <th className="text-left px-3 py-2">Semana</th>
+                  <th className="text-right px-3 py-2">Entradas</th>
+                  <th className="text-right px-3 py-2">Saídas</th>
+                  <th className="text-right px-3 py-2">Líquido</th>
+                  <th className="text-right px-3 py-2">Saldo acumulado</th>
+                </tr>
+              </thead>
+              <tbody>
+                {projWeeks.map((w, i) => (
+                  <tr key={i} className="border-t border-neutral-100">
+                    <td className="px-3 py-2 text-xs">{w.label}</td>
+                    <td className="px-3 py-2 text-right text-emerald-700 tabular-nums">
+                      {w.inflow > 0 ? `+ ${brl(w.inflow)}` : '—'}
+                    </td>
+                    <td className="px-3 py-2 text-right text-amber-700 tabular-nums">
+                      {w.outflow > 0 ? `− ${brl(w.outflow)}` : '—'}
+                    </td>
+                    <td className={`px-3 py-2 text-right tabular-nums font-medium ${w.net >= 0 ? 'text-emerald-700' : 'text-rose-700'}`}>
+                      {w.net >= 0 ? '+' : '−'} {brl(Math.abs(w.net))}
+                    </td>
+                    <td className={`px-3 py-2 text-right tabular-nums font-semibold ${w.running_end >= 0 ? 'text-emerald-700' : 'text-rose-700'}`}>
+                      {w.running_end >= 0 ? '+' : '−'} {brl(Math.abs(w.running_end))}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </section>
+      )}
+    </div>
+  );
+}
+
+function Milestone({ label, value }: { label: string; value: number }) {
+  const positive = value >= 0;
+  return (
+    <div className="rounded-lg border border-neutral-200 p-3">
+      <div className="text-[10px] uppercase tracking-wider text-neutral-500 font-semibold">{label}</div>
+      <div className={`font-display text-2xl font-semibold mt-1 tabular-nums ${positive ? 'text-emerald-700' : 'text-rose-700'}`}>
+        {positive ? '+' : '−'} {brl(Math.abs(value))}
+      </div>
     </div>
   );
 }
@@ -367,4 +483,58 @@ function bucketByWeek(caps: any[], startISO: string, endISO: string): Array<{ la
 function formatDM(iso: string): string {
   const [, m, d] = iso.split('-');
   return `${d}/${m}`;
+}
+
+interface ProjDay {
+  date: string;
+  inflow: number;
+  outflow: number;
+  net: number;
+  running_balance: number;
+}
+
+interface ProjWeek {
+  label: string;
+  inflow: number;
+  outflow: number;
+  net: number;
+  running_end: number;
+}
+
+// Agrupa dia-a-dia da projeção em semanas (5 ou 6 semanas para 90d).
+// Soma inflow/outflow/net da semana + running_balance do último dia.
+function bucketProjectionByWeek(days: ProjDay[]): ProjWeek[] {
+  if (days.length === 0) return [];
+  const weeks: ProjWeek[] = [];
+  let current: ProjWeek | null = null;
+  let weekStart: string | null = null;
+
+  for (const d of days) {
+    const dt = new Date(`${d.date}T00:00:00Z`);
+    const day = dt.getUTCDay(); // 0=Sun, 1=Mon...
+    // Semana ISO começa segunda — calcula offset pro início da semana atual
+    const offset = day === 0 ? 6 : day - 1;
+    const ws = new Date(dt.getTime() - offset * 86_400_000).toISOString().slice(0, 10);
+
+    if (ws !== weekStart) {
+      if (current) weeks.push(current);
+      weekStart = ws;
+      const we = new Date(new Date(`${ws}T00:00:00Z`).getTime() + 6 * 86_400_000).toISOString().slice(0, 10);
+      current = {
+        label: `${formatDM(ws)}–${formatDM(we)}`,
+        inflow: 0,
+        outflow: 0,
+        net: 0,
+        running_end: 0,
+      };
+    }
+    if (current) {
+      current.inflow += d.inflow;
+      current.outflow += d.outflow;
+      current.net += d.net;
+      current.running_end = d.running_balance;
+    }
+  }
+  if (current) weeks.push(current);
+  return weeks;
 }

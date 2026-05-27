@@ -9,6 +9,7 @@ type SearchParams = {
   org?: string;
   from?: string;
   to?: string;
+  cc?: string;
 };
 
 interface DreSummary {
@@ -105,7 +106,18 @@ export default async function DrePage({
     label: o.trade_name ?? o.legal_name,
   }));
 
+  // Centros de custo do grupo (escopo = group_id)
+  const { data: ccs } = await supabase
+    .from('cost_centers')
+    .select('id, code, name')
+    .eq('group_id', group.id)
+    .eq('active', true)
+    .is('deleted_at', null)
+    .order('code');
+  const costCenters = (ccs ?? []).map((c) => ({ id: c.id, label: `${c.code} · ${c.name}` }));
+
   const orgFilter = params.org && params.org !== 'all' ? params.org : null;
+  const ccFilter = params.cc && params.cc !== 'all' ? params.cc : null;
   const fromFilter = params.from || thisMonthFrom();
   const toFilter = params.to || todayIso();
 
@@ -115,6 +127,7 @@ export default async function DrePage({
     p_organization_id: orgFilter,
     p_date_from: fromFilter,
     p_date_to: toFilter,
+    p_cost_center_id: ccFilter,
   });
   const summary = ((summaryRows as DreSummary[]) ?? [])[0] ?? null;
 
@@ -124,6 +137,7 @@ export default async function DrePage({
     p_organization_id: orgFilter,
     p_date_from: fromFilter,
     p_date_to: toFilter,
+    p_cost_center_id: ccFilter,
   });
   const lines = (linesRaw as DreLine[]) ?? [];
   const revenues = lines.filter((l) => l.account_type === 'revenue');
@@ -138,6 +152,7 @@ export default async function DrePage({
     p_organization_id: orgFilter,
     p_date_from: compStart,
     p_date_to: compEnd,
+    p_cost_center_id: ccFilter,
   });
   const prev = ((prevRows as DreSummary[]) ?? [])[0] ?? null;
 
@@ -145,6 +160,14 @@ export default async function DrePage({
     summary && prev && Number(prev.resultado) !== 0
       ? ((Number(summary.resultado) - Number(prev.resultado)) / Math.abs(Number(prev.resultado))) * 100
       : null;
+
+  // Query string que preserva filtros nos links de drilldown e export
+  const drilldownQs = new URLSearchParams({
+    ...(orgFilter ? { org: orgFilter } : {}),
+    ...(ccFilter ? { cc: ccFilter } : {}),
+    from: fromFilter,
+    to: toFilter,
+  }).toString();
 
   return (
     <div className="max-w-6xl mx-auto p-6 space-y-6">
@@ -155,17 +178,27 @@ export default async function DrePage({
             Demonstração de Resultado por competência. Compara com o mês anterior automaticamente.
           </p>
         </div>
-        <Link
-          href="/fluxo-de-caixa"
-          className="text-xs text-neutral-500 hover:text-maxfem-pink whitespace-nowrap"
-        >
-          Fluxo de Caixa →
-        </Link>
+        <div className="flex items-center gap-3">
+          <a
+            href={`/api/dre/export?${drilldownQs}`}
+            className="text-xs px-3 py-1.5 rounded-md border border-maxfem-pink text-maxfem-pink hover:bg-maxfem-pink hover:text-white transition whitespace-nowrap"
+          >
+            Exportar CSV
+          </a>
+          <Link
+            href="/fluxo-de-caixa"
+            className="text-xs text-neutral-500 hover:text-maxfem-pink whitespace-nowrap"
+          >
+            Fluxo de Caixa →
+          </Link>
+        </div>
       </header>
 
       <DreFiltersForm
         empresas={empresas}
+        costCenters={costCenters}
         orgFilter={orgFilter}
+        ccFilter={ccFilter}
         fromFilter={fromFilter}
         toFilter={toFilter}
       />
@@ -238,7 +271,7 @@ export default async function DrePage({
             <div className="px-4 py-1.5 bg-emerald-50 border-b border-emerald-100">
               <span className="text-[11px] uppercase tracking-wider font-semibold text-emerald-800">Receitas</span>
             </div>
-            <DreTable rows={revenues} />
+            <DreTable rows={revenues} drilldownQs={drilldownQs} />
           </>
         )}
 
@@ -247,7 +280,7 @@ export default async function DrePage({
             <div className="px-4 py-1.5 bg-amber-50 border-b border-amber-100 border-t border-neutral-200">
               <span className="text-[11px] uppercase tracking-wider font-semibold text-amber-800">Despesas</span>
             </div>
-            <DreTable rows={expenses} />
+            <DreTable rows={expenses} drilldownQs={drilldownQs} />
           </>
         )}
 
@@ -298,7 +331,7 @@ function StatCard({
   );
 }
 
-function DreTable({ rows }: { rows: DreLine[] }) {
+function DreTable({ rows, drilldownQs }: { rows: DreLine[]; drilldownQs: string }) {
   const total = rows.reduce((a, r) => a + Number(r.total), 0);
   const realized = rows.reduce((a, r) => a + Number(r.realized), 0);
   const pending = rows.reduce((a, r) => a + Number(r.pending), 0);
@@ -315,23 +348,29 @@ function DreTable({ rows }: { rows: DreLine[] }) {
         </tr>
       </thead>
       <tbody>
-        {rows.map((r, i) => (
-          <tr key={`${r.account_id ?? 'no-account'}-${i}`} className="border-t border-neutral-100 hover:bg-neutral-50/50">
-            <td className="px-4 py-2">
-              <div className="text-sm">
-                {r.account_code ? <span className="font-mono text-xs text-neutral-400 mr-2">{r.account_code}</span> : null}
-                {r.account_name ?? <span className="italic text-neutral-400">sem plano de contas</span>}
-              </div>
-              <div className="text-[11px] text-neutral-500">{r.doc_count} doc(s)</div>
-            </td>
-            <td className="px-4 py-2 text-right tabular-nums">{brl(r.total)}</td>
-            <td className="px-4 py-2 text-right tabular-nums text-neutral-600">{brl(r.realized)}</td>
-            <td className="px-4 py-2 text-right tabular-nums text-neutral-400">{brl(r.pending)}</td>
-            <td className="px-4 py-2 text-right text-xs text-neutral-500">
-              {total > 0 ? `${((Number(r.total) / total) * 100).toFixed(1)}%` : '—'}
-            </td>
-          </tr>
-        ))}
+        {rows.map((r, i) => {
+          const drillCode = r.account_code ?? 'sem-conta';
+          return (
+            <tr key={`${r.account_id ?? 'no-account'}-${i}`} className="border-t border-neutral-100 hover:bg-neutral-50/50">
+              <td className="px-4 py-2">
+                <Link
+                  href={`/dre/conta/${encodeURIComponent(drillCode)}?${drilldownQs}`}
+                  className="block text-sm hover:text-maxfem-pink"
+                >
+                  {r.account_code ? <span className="font-mono text-xs text-neutral-400 mr-2">{r.account_code}</span> : null}
+                  {r.account_name ?? <span className="italic text-neutral-400">sem plano de contas</span>}
+                </Link>
+                <div className="text-[11px] text-neutral-500">{r.doc_count} doc(s)</div>
+              </td>
+              <td className="px-4 py-2 text-right tabular-nums">{brl(r.total)}</td>
+              <td className="px-4 py-2 text-right tabular-nums text-neutral-600">{brl(r.realized)}</td>
+              <td className="px-4 py-2 text-right tabular-nums text-neutral-400">{brl(r.pending)}</td>
+              <td className="px-4 py-2 text-right text-xs text-neutral-500">
+                {total > 0 ? `${((Number(r.total) / total) * 100).toFixed(1)}%` : '—'}
+              </td>
+            </tr>
+          );
+        })}
         <tr className="border-t-2 border-neutral-300 bg-neutral-50 font-semibold">
           <td className="px-4 py-2 text-sm">Total</td>
           <td className="px-4 py-2 text-right tabular-nums">{brl(total)}</td>
