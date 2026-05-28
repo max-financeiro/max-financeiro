@@ -10,6 +10,7 @@ import { createClient } from '@/lib/supabase/server';
 import { logAuditEvent } from '@/lib/auth/audit';
 import { detectAttachmentKind } from '@/lib/cap/extract';
 import { ensureSupplier } from '@/lib/partners/ensure-supplier';
+import { validateUpload } from '@/lib/uploads/safe-upload';
 import type { Json } from '@/types/supabase';
 
 const TAG = '[cap-import]';
@@ -96,13 +97,16 @@ export async function importCapAction(
     return { ok: false, error: 'Sem permissão', values };
   }
 
-  // Arquivo anexo (vem como File no FormData)
+  // Arquivo anexo (vem como File no FormData) — valida magic bytes + AV
   const file = formData.get('file');
-  if (!(file instanceof File) || file.size === 0) {
+  if (!(file instanceof File)) {
     return { ok: false, error: 'Anexo obrigatório', values };
   }
-  if (file.size > 10 * 1024 * 1024) {
-    return { ok: false, error: 'Anexo maior que 10MB', values };
+  const safety = await validateUpload(file, {
+    allowedTypes: ['pdf', 'xml', 'jpeg', 'png', 'webp'],
+  });
+  if (!safety.ok) {
+    return { ok: false, error: safety.error, values };
   }
 
   const admin = getAdminClient();
@@ -177,10 +181,10 @@ export async function importCapAction(
   const refNumber = inserted.reference_number ?? 'CAP-?';
 
   // ============================================================
-  // 2. Upload arquivo pro bucket
+  // 2. Upload arquivo pro bucket — buffer + mimeType validados acima
   // ============================================================
-  const buffer = Buffer.from(await file.arrayBuffer());
-  const mimeType = file.type || 'application/octet-stream';
+  const buffer = safety.buffer;
+  const mimeType = safety.mimeType;
   const safeName = file.name.replace(/[^\w.\-]/g, '_').slice(0, 200);
   const storagePath = `${parsed.data.organization_id}/${capId}/${Date.now()}-${safeName}`;
 

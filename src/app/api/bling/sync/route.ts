@@ -14,6 +14,7 @@
 // SERVICE_ROLE: cron job não tem sessão de usuário; precisa iterar todas as orgs e bypassar RLS.
 // eslint-disable-next-line no-restricted-imports
 import { getAdminClient } from '@/lib/supabase/admin';
+import { createClient } from '@/lib/supabase/server';
 import { createBlingProvider } from '@/lib/bling/factory';
 import { syncOrphanInvoices, syncProducts, syncStock } from '@/lib/bling/sync';
 
@@ -23,15 +24,25 @@ export const maxDuration = 300;                    // 5min (Vercel Pro)
 type SyncType = 'products' | 'stock' | 'invoices_orphan';
 
 export async function POST(req: Request) {
-  // Auth: cron secret OU usuário admin autenticado
+  // Auth: cron secret OU usuário master/financial_manager autenticado
   const auth = req.headers.get('authorization');
   const cronSecret = process.env.CRON_SECRET;
   const isCron = cronSecret && auth === `Bearer ${cronSecret}`;
 
   if (!isCron) {
-    // TODO: validar sessão de master/financial_manager via cookies do Supabase.
-    // Por enquanto, sem cron secret = 401.
-    return Response.json({ error: 'Unauthorized' }, { status: 401 });
+    const supabase = await createClient();
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) {
+      return Response.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+    const { data: profile } = await supabase
+      .from('user_profiles')
+      .select('role')
+      .eq('user_id', user.id)
+      .maybeSingle();
+    if (!profile || !['master', 'financial_manager'].includes(profile.role)) {
+      return Response.json({ error: 'Forbidden' }, { status: 403 });
+    }
   }
 
   let body: { sync_types?: SyncType[]; organization_id?: string } = {};

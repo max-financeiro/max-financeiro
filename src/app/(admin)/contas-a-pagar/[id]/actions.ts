@@ -10,6 +10,8 @@ import { getAdminClient } from '@/lib/supabase/admin';
 import { createClient } from '@/lib/supabase/server';
 import { logAuditEvent } from '@/lib/auth/audit';
 import { getPaymentProvider } from '@/lib/payments/factory';
+import { verifyStepUpCode, STEP_UP_PAYMENT_THRESHOLD } from '@/lib/auth/mfa';
+import { validateUpload } from '@/lib/uploads/safe-upload';
 import {
   buildInterReceiptPdf,
   getInterPixEndToEnd,
@@ -139,8 +141,6 @@ export async function approvePayableAction(
     };
   }
 
-  // Strategic exige aprovação do master após o manager (workflow 2-stage)
-  // Por ora simplificamos: 1 aprovação no nível certo basta.
   const step =
     profile.role === 'master'
       ? 'master_approval'
@@ -149,6 +149,53 @@ export async function approvePayableAction(
         : 'analyst_validation';
 
   const admin = getAdminClient();
+
+  // ============================================================
+  // DUAL APPROVAL pra nível 'strategic':
+  // exige aprovação do MANAGER primeiro, depois MASTER. Sem isso,
+  // financial_manager sozinho aprovava qualquer valor classificado
+  // como strategic — bypass total da governança financeira.
+  // ============================================================
+  const isStrategic = cap.approval_level_required === 'strategic';
+  let finalStatus: 'approved' | 'pending_approval' = 'approved';
+
+  if (isStrategic) {
+    if (profile.role === 'financial_manager') {
+      // 1ª aprovação (manager) — só inserimos o registro, status fica em
+      // pending_approval; master precisa confirmar pra finalizar.
+      finalStatus = 'pending_approval';
+    } else if (profile.role === 'master') {
+      // Master só pode finalizar se manager já aprovou
+      const { data: managerStep } = await admin
+        .from('payable_approvals')
+        .select('id')
+        .eq('payable_id', cap.id)
+        .eq('approval_step', 'manager_approval')
+        .eq('decision', 'approved')
+        .limit(1)
+        .maybeSingle();
+      if (!managerStep) {
+        return {
+          ok: false,
+          error: 'CAP nível Estratégico exige aprovação do Gestor Financeiro antes do Master.',
+        };
+      }
+      finalStatus = 'approved';
+    }
+  }
+
+  // Bloqueia 2ª aprovação do mesmo step pela mesma pessoa (idempotência)
+  const { data: alreadyApproved } = await admin
+    .from('payable_approvals')
+    .select('id')
+    .eq('payable_id', cap.id)
+    .eq('approval_step', step)
+    .eq('decision', 'approved')
+    .limit(1)
+    .maybeSingle();
+  if (alreadyApproved) {
+    return { ok: false, error: `Esta CAP já tem aprovação ${step}.` };
+  }
 
   // Insere registro de aprovação (audit do workflow)
   const { error: apprErr } = await admin.from('payable_approvals').insert({
@@ -164,13 +211,12 @@ export async function approvePayableAction(
     return { ok: false, error: apprErr.message };
   }
 
-  // Atualiza CAP
+  // Atualiza CAP — só vira 'approved' quando o workflow está completo
+  const update: { status: typeof finalStatus; approved_at?: string } = { status: finalStatus };
+  if (finalStatus === 'approved') update.approved_at = new Date().toISOString();
   const { error: updErr } = await admin
     .from('accounts_payable')
-    .update({
-      status: 'approved',
-      approved_at: new Date().toISOString(),
-    })
+    .update(update)
     .eq('id', cap.id);
   if (updErr) return { ok: false, error: updErr.message };
 
@@ -308,6 +354,7 @@ const RequestPaymentSchema = z.object({
   // 'now' = imediato · 'due_date' = agenda pro vencimento do CAP · 'custom' = data livre
   schedule_mode: z.enum(['now', 'due_date', 'custom']).default('now'),
   scheduled_date: z.string().optional(),
+  totp_code: z.string().optional(),
 });
 
 export async function requestPaymentAction(
@@ -318,6 +365,7 @@ export async function requestPaymentAction(
     payable_id: formData.get('payable_id'),
     schedule_mode: formData.get('schedule_mode') ?? undefined,
     scheduled_date: formData.get('scheduled_date') ?? undefined,
+    totp_code: formData.get('totp_code') ?? undefined,
   });
   if (!parsed.success) return { ok: false, error: 'Dados inválidos' };
 
@@ -334,6 +382,21 @@ export async function requestPaymentAction(
 
   if (!cap.supplier_id) {
     return { ok: false, error: 'CAP sem fornecedor vinculado' };
+  }
+
+  // ============================================================
+  // STEP-UP 2FA pra valores altos. Reduz dano de cookie/sessão
+  // sequestrados após login: pagamento high-value exige código TOTP
+  // fresco do app autenticador, independente da sessão estar AAL2.
+  // ============================================================
+  if (Number(cap.amount) >= STEP_UP_PAYMENT_THRESHOLD) {
+    const verify = await verifyStepUpCode(supabase, parsed.data.totp_code ?? '');
+    if (!verify.ok) {
+      return {
+        ok: false,
+        error: `Step-up 2FA exigido (CAP ≥ R$ ${STEP_UP_PAYMENT_THRESHOLD.toLocaleString('pt-BR')}): ${verify.error}`,
+      };
+    }
   }
 
   const admin = getAdminClient();
@@ -673,11 +736,8 @@ export async function addAttachmentAction(
   }
 
   const file = formData.get('file');
-  if (!(file instanceof File) || file.size === 0) {
+  if (!(file instanceof File)) {
     return { ok: false, error: 'Arquivo obrigatório' };
-  }
-  if (file.size > 10 * 1024 * 1024) {
-    return { ok: false, error: 'Arquivo maior que 10MB' };
   }
 
   // Lê CAP via client RLS-aware — só vê CAPs das orgs que tem acesso.
@@ -690,16 +750,20 @@ export async function addAttachmentAction(
     .maybeSingle();
   if (!cap) return { ok: false, error: 'CAP não encontrada ou sem acesso' };
 
+  // Validação de tamanho + magic bytes vs MIME + antivírus
+  const safety = await validateUpload(file, {
+    allowedTypes: ['pdf', 'xml', 'jpeg', 'png', 'webp'],
+  });
+  if (!safety.ok) return { ok: false, error: safety.error };
+
   const admin = getAdminClient();
 
-  const buffer = Buffer.from(await file.arrayBuffer());
-  const mimeType = file.type || 'application/octet-stream';
   const safeName = file.name.replace(/[^\w.\-]/g, '_').slice(0, 200);
   const storagePath = `${cap.organization_id}/${cap.id}/${Date.now()}-${safeName}`;
 
   const { error: uploadErr } = await admin.storage
     .from('cap-attachments')
-    .upload(storagePath, buffer, { contentType: mimeType, upsert: false });
+    .upload(storagePath, safety.buffer, { contentType: safety.mimeType, upsert: false });
 
   if (uploadErr) {
     return { ok: false, error: `Falha no upload: ${uploadErr.message}` };
@@ -707,9 +771,9 @@ export async function addAttachmentAction(
 
   const lowerName = file.name.toLowerCase();
   let kind: 'nfe_xml' | 'nfe_pdf' | 'boleto_pdf' | 'invoice' | 'receipt' | 'other' = 'other';
-  if (mimeType === 'application/xml' || mimeType === 'text/xml' || lowerName.endsWith('.xml')) {
+  if (safety.type === 'xml') {
     kind = 'nfe_xml';
-  } else if (mimeType === 'application/pdf') {
+  } else if (safety.type === 'pdf') {
     if (lowerName.includes('nf') || lowerName.includes('nota')) kind = 'nfe_pdf';
     else if (lowerName.includes('boleto') || lowerName.includes('cobranca')) kind = 'boleto_pdf';
     else if (lowerName.includes('recibo')) kind = 'receipt';
@@ -721,7 +785,7 @@ export async function addAttachmentAction(
     organization_id: cap.organization_id,
     storage_path: storagePath,
     file_name: file.name,
-    mime_type: mimeType,
+    mime_type: safety.mimeType,
     size_bytes: file.size,
     kind,
     source: 'manual',

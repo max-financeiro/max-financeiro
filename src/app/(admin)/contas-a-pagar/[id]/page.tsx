@@ -410,6 +410,8 @@ export default async function CAPDetailPage({
             canReject={canReject}
             canCancel={canCancel}
             dueDate={cap.due_date}
+            amount={Number(cap.amount)}
+            stepUpThreshold={Number(process.env.STEP_UP_PAYMENT_THRESHOLD ?? '10000')}
           />
 
           <CAPTimeline

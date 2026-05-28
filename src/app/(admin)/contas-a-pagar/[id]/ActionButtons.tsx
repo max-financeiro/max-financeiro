@@ -17,6 +17,8 @@ type Props = {
   canReject: boolean;
   canCancel: boolean;
   dueDate: string;
+  amount: number;
+  stepUpThreshold: number;
 };
 
 export function ActionButtons({
@@ -27,6 +29,8 @@ export function ActionButtons({
   canReject,
   canCancel,
   dueDate,
+  amount,
+  stepUpThreshold,
 }: Props) {
   const [approveState, approveAction, approvePending] = useActionState<ActionState, FormData>(
     approvePayableAction,
@@ -53,6 +57,8 @@ export function ActionButtons({
   // Agendamento do pagamento
   const [scheduleMode, setScheduleMode] = useState<'now' | 'due_date' | 'custom'>('now');
   const [customDate, setCustomDate] = useState('');
+  const [totpCode, setTotpCode] = useState('');
+  const needsStepUp = amount >= stepUpThreshold;
   const today = new Date().toISOString().slice(0, 10);
   const dueDateBR = dueDate ? dueDate.split('-').reverse().join('/') : '—';
 
@@ -164,12 +170,36 @@ export function ActionButtons({
             </p>
           </fieldset>
 
+          {needsStepUp && (
+            <div className="bg-amber-50 border border-amber-200 rounded-md p-3 space-y-2">
+              <p className="text-xs text-amber-900 font-medium">
+                Step-up 2FA exigido — valor ≥ R$ {stepUpThreshold.toLocaleString('pt-BR')}
+              </p>
+              <input
+                type="text"
+                inputMode="numeric"
+                pattern="[0-9]{6}"
+                maxLength={6}
+                value={totpCode}
+                onChange={(e) => setTotpCode(e.target.value.replace(/\D/g, ''))}
+                placeholder="Código 6 dígitos do app autenticador"
+                className="input-field"
+                autoComplete="one-time-code"
+              />
+            </div>
+          )}
+
           <button
             type="button"
-            disabled={anyPending || (scheduleMode === 'custom' && !customDate)}
+            disabled={
+              anyPending ||
+              (scheduleMode === 'custom' && !customDate) ||
+              (needsStepUp && totpCode.length !== 6)
+            }
             onClick={() => {
               const fields: Record<string, string> = { schedule_mode: scheduleMode };
               if (scheduleMode === 'custom') fields.scheduled_date = customDate;
+              if (needsStepUp) fields.totp_code = totpCode;
               submit(paymentAction, fields);
             }}
             className="btn-primary"

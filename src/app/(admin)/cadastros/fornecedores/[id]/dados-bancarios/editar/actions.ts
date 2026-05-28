@@ -11,6 +11,7 @@ import { createClient } from '@/lib/supabase/server';
 import { logAuditEvent } from '@/lib/auth/audit';
 import { isValidBRDocument, normalizeDocument } from '@/lib/document';
 import { sendBankChangeNotifications } from '@/lib/email/bank-change-notification';
+import { verifyStepUpCode } from '@/lib/auth/mfa';
 
 /**
  * Update de dados bancários — fluxo crítico anti-fraude.
@@ -33,6 +34,7 @@ const UpdateBankSchema = z
     account_holder_doc: z.string().max(20).optional().or(z.literal('')),
     reason: z.string().min(5, 'Descreva o motivo da alteração').max(500),
     confirm: z.literal('true', { errorMap: () => ({ message: 'Confirme o ciente do cooldown 24h' }) }),
+    totp_code: z.string().optional().or(z.literal('')),
   })
   .refine(
     (d) => (d.pix_key_type && d.pix_key) || (d.bank_code && d.agency && d.account_number),
@@ -92,6 +94,7 @@ export async function updateBankDetailsAction(
     account_holder_doc: g('account_holder_doc'),
     reason: g('reason'),
     confirm: g('confirm'),
+    totp_code: g('totp_code'),
   };
 
   const values = pickValues(formData);
@@ -144,6 +147,19 @@ export async function updateBankDetailsAction(
   if (!['master', 'financial_manager', 'financial_analyst'].includes(profile.role)) {
     console.error(TAG, 'role_not_allowed', { role: profile.role });
     return { ok: false, error: `Role "${profile.role}" sem permissão pra esta operação`, values };
+  }
+
+  // Step-up 2FA: mudança bancária é ação anti-fraude crítica. Mesmo com
+  // sessão AAL2 já estabelecida, exige código TOTP fresco do app autenticador
+  // — reduz dano de cookie/sessão sequestrados.
+  const stepUp = await verifyStepUpCode(supabase, parsed.data.totp_code ?? '');
+  if (!stepUp.ok) {
+    return {
+      ok: false,
+      error: `Step-up 2FA exigido pra alterar dados bancários: ${stepUp.error}`,
+      fieldErrors: { totp_code: stepUp.error },
+      values,
+    };
   }
 
   // Verifica supplier visível pelo user

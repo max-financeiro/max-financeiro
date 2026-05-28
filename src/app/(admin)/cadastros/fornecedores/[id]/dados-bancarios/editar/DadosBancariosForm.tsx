@@ -288,6 +288,27 @@ export function DadosBancariosForm({ supplierId, supplierName, buildSha }: Props
         )}
       </section>
 
+      {/* Step-up 2FA */}
+      <section className="bg-amber-50 border border-amber-200 rounded-lg p-5 space-y-2">
+        <h2 className="text-sm font-semibold text-amber-900">Confirmação 2FA</h2>
+        <p className="text-xs text-amber-800">
+          Mudança bancária é ação anti-fraude crítica — exige código TOTP fresco do
+          app autenticador, mesmo com sessão ativa.
+        </p>
+        <input
+          type="text"
+          name="totp_code"
+          inputMode="numeric"
+          pattern="[0-9]{6}"
+          maxLength={6}
+          placeholder="Código 6 dígitos"
+          className="input-field"
+          autoComplete="one-time-code"
+          aria-invalid={!!fieldErrors?.totp_code}
+        />
+        {fieldErrors?.totp_code && <p className="form-error">{fieldErrors.totp_code}</p>}
+      </section>
+
       <div className="flex justify-end gap-3">
         <button type="button" onClick={() => router.push(`/cadastros/fornecedores/${supplierId}`)} className="btn-secondary">
           Cancelar

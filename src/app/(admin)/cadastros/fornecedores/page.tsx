@@ -24,13 +24,19 @@ export default async function FornecedoresPage({
     .order('legal_name');
 
   if (q && q.trim()) {
-    // Busca por razão social, nome fantasia, email, ou documento (sem máscara)
-    const pattern = `%${q.trim()}%`;
-    const docDigits = q.trim().replace(/\D/g, '');
-    if (docDigits.length >= 3) {
-      query = query.or(`legal_name.ilike.${pattern},trade_name.ilike.${pattern},email.ilike.${pattern},document.ilike.%${docDigits}%`);
-    } else {
-      query = query.or(`legal_name.ilike.${pattern},trade_name.ilike.${pattern},email.ilike.${pattern}`);
+    // PostgREST .or() trata vírgula, parênteses e ponto como sintaxe — input
+    // do usuário precisa ser escapado pra não injetar filtros adicionais ou
+    // operadores (ex: "foo,deleted_at.not.is.null" expandiria a query).
+    // Escape conservador: remove esses caracteres do `q`.
+    const sanitized = q.trim().replace(/[,()."\\*]/g, ' ').replace(/\s+/g, ' ').trim();
+    if (sanitized.length > 0) {
+      const pattern = `%${sanitized}%`;
+      const docDigits = sanitized.replace(/\D/g, '');
+      if (docDigits.length >= 3) {
+        query = query.or(`legal_name.ilike.${pattern},trade_name.ilike.${pattern},email.ilike.${pattern},document.ilike.%${docDigits}%`);
+      } else {
+        query = query.or(`legal_name.ilike.${pattern},trade_name.ilike.${pattern},email.ilike.${pattern}`);
+      }
     }
   }
 

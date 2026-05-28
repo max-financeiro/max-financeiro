@@ -52,3 +52,56 @@ export function isStepUpVerified(session: Session | null): boolean {
   const methods = (session.user.app_metadata?.amr as Array<{ method: string }> | undefined) ?? [];
   return methods.some((m) => m.method === 'totp');
 }
+
+/**
+ * Step-up verification: para ações sensíveis (pagamento alto valor, mudança
+ * de dados bancários), exige que o usuário insira novamente o código TOTP.
+ *
+ * Recebe o código de 6 dígitos do form. Lista o factor TOTP do user,
+ * dispara challenge e verify. Se OK, a sessão fica em aal2 (caso ainda não
+ * estivesse) e a operação prossegue.
+ *
+ * IMPORTANTE: caller é responsável por:
+ *   - ler `totp_code` do FormData
+ *   - chamar essa função ANTES da mutação sensível
+ *   - propagar o erro pro UI ("código inválido" / "factor não cadastrado")
+ */
+export async function verifyStepUpCode(
+  supabase: AnySupabase,
+  code: string,
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  const trimmed = String(code ?? '').replace(/\D/g, '').slice(0, 6);
+  if (trimmed.length !== 6) {
+    return { ok: false, error: 'Código 2FA deve ter 6 dígitos' };
+  }
+
+  const { data: factorsData, error: listErr } = await supabase.auth.mfa.listFactors();
+  if (listErr) return { ok: false, error: `Falha ao listar 2FA: ${listErr.message}` };
+  const verifiedTotp = factorsData?.totp?.find((f) => f.status === 'verified');
+  if (!verifiedTotp) {
+    return { ok: false, error: '2FA não cadastrado — ative em /auth/2fa/enroll antes.' };
+  }
+
+  const { data: challengeData, error: challengeErr } = await supabase.auth.mfa.challenge({
+    factorId: verifiedTotp.id,
+  });
+  if (challengeErr || !challengeData) {
+    return { ok: false, error: `Falha no challenge 2FA: ${challengeErr?.message ?? 'unknown'}` };
+  }
+
+  const { error: verifyErr } = await supabase.auth.mfa.verify({
+    factorId: verifiedTotp.id,
+    challengeId: challengeData.id,
+    code: trimmed,
+  });
+  if (verifyErr) {
+    return { ok: false, error: 'Código 2FA inválido. Confira o app autenticador.' };
+  }
+
+  return { ok: true };
+}
+
+/** Valor (R$) acima do qual pagamento exige step-up 2FA. Default R$ 10k. */
+export const STEP_UP_PAYMENT_THRESHOLD = Number(
+  process.env.STEP_UP_PAYMENT_THRESHOLD ?? '10000',
+);

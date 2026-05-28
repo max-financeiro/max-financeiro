@@ -23,7 +23,7 @@ export default async function IntegracoesHubPage() {
   const supabase = await createClient();
 
   // Status real das integrações já implementadas
-  const [bling, gemini, asaas, inter] = await Promise.all([
+  const [bling, gemini, inter] = await Promise.all([
     supabase
       .from('bling_connection_status')
       .select('active, connected_at')
@@ -34,13 +34,7 @@ export default async function IntegracoesHubPage() {
       .select('active, model, connected_at, last_validation_status')
       .eq('active', true)
       .maybeSingle(),
-    // Views asaas/inter_connection_status ainda não estão nos types gerados — bypass localizado.
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    (supabase as any)
-      .from('asaas_connection_status')
-      .select('active, environment, connected_at')
-      .eq('active', true)
-      .maybeSingle(),
+    // View inter_connection_status ainda não está nos types gerados — bypass localizado.
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     (supabase as any)
       .from('inter_connection_status')
@@ -78,14 +72,10 @@ export default async function IntegracoesHubPage() {
       slug: 'asaas',
       name: 'Asaas',
       category: 'Banco',
-      description: 'Conta digital e cobranças. Saldo, extrato e cobranças via API Asaas.',
-      href: '/integracoes/asaas',
-      status: asaas.data?.active ? 'connected' : 'not_connected',
-      statusDetail: asaas.data?.active
-        ? `Conectado em ${new Date(asaas.data.connected_at!).toLocaleDateString('pt-BR')} · ${
-            asaas.data.environment === 'sandbox' ? 'Sandbox' : 'Produção'
-          }`
-        : 'Sem credencial — conecte a API key do Asaas.',
+      description: 'Conta digital e cobranças. Integração planejada — webhook e sync ainda não implementados.',
+      href: '/integracoes',
+      status: 'coming_soon',
+      statusDetail: 'Roadmap v1.1 — implementação de cobrança e webhook em planejamento.',
       brand: 'sky',
     },
     {

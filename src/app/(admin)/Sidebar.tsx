@@ -22,6 +22,7 @@ const SECTIONS: Section[] = [
     items: [
       { href: '/caixa/nfs-orfas', label: 'NFs órfãs' },
       { href: '/caixa/conciliacao', label: 'Conciliação Inter' },
+      { href: '/notificacoes', label: 'Notificações' },
     ],
   },
   {
@@ -53,6 +54,8 @@ const SECTIONS: Section[] = [
     items: [
       { href: '/integracoes', label: 'Visão geral' },
       { href: '/integracoes/bling', label: 'Bling' },
+      { href: '/integracoes/inter', label: 'Banco Inter' },
+      { href: '/integracoes/inter/webhooks', label: 'Webhooks Inter' },
       { href: '/integracoes/gemini', label: 'Gemini · IA' },
     ],
   },
@@ -130,7 +133,7 @@ export function Sidebar() {
 
         <div className="px-3 pt-4 mt-2 border-t border-ink-200/60">
           <p className="text-micro text-ink-400 leading-relaxed">
-            v0.1 · 2026
+            v1.0 · 2026
             <br />
             Financeiro Maxfem
           </p>

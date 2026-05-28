@@ -18,12 +18,13 @@ import { createClient } from '@/lib/supabase/server';
 // tabela e mais restrita; service_role roda apos auth check explicito).
 // eslint-disable-next-line no-restricted-imports
 import { getAdminClient } from '@/lib/supabase/admin';
+import { validateUpload } from '@/lib/uploads/safe-upload';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 60;
 export const runtime = 'nodejs';
 
-const MAX_BYTES = 10 * 1024 * 1024;
+// MAX_BYTES agora vem do default em validateUpload() (10MB).
 
 const DataSchema = z.object({
   // organization_id removido: o sistema acha a filial pelo CNPJ
@@ -107,10 +108,19 @@ export async function POST(req: Request) {
     return Response.json({ error: `Campos inválidos: ${msg}` }, { status: 400 });
   }
 
-  // Valida tamanho dos arquivos
-  for (const f of [xmlFile, pdfFile]) {
-    if (f instanceof File && f.size > MAX_BYTES) {
-      return Response.json({ error: `Arquivo > 10MB: ${f.name}` }, { status: 413 });
+  // Valida arquivos: tamanho + magic bytes vs MIME + antivírus
+  let xmlSafe: Awaited<ReturnType<typeof validateUpload>> | null = null;
+  let pdfSafe: Awaited<ReturnType<typeof validateUpload>> | null = null;
+  if (xmlFile instanceof File && xmlFile.size > 0) {
+    xmlSafe = await validateUpload(xmlFile, { allowedTypes: ['xml'] });
+    if (!xmlSafe.ok) {
+      return Response.json({ error: `XML rejeitado: ${xmlSafe.error}` }, { status: 400 });
+    }
+  }
+  if (pdfFile instanceof File && pdfFile.size > 0) {
+    pdfSafe = await validateUpload(pdfFile, { allowedTypes: ['pdf'] });
+    if (!pdfSafe.ok) {
+      return Response.json({ error: `PDF rejeitado: ${pdfSafe.error}` }, { status: 400 });
     }
   }
 
@@ -144,31 +154,46 @@ export async function POST(req: Request) {
     );
   }
 
+  // Cross-group guard: o supplier está vinculado a UM grupo (supplier.group_id).
+  // A org destinatária precisa pertencer a esse mesmo grupo. Sem isso, supplier
+  // cadastrado em A poderia submeter NF que cai no grupo B passando outro CNPJ.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const { data: orgGroupId } = await (admin as any).rpc('resolve_group_id', {
+    p_organization_id: org.id,
+  });
+  if (orgGroupId !== supplier.group_id) {
+    return Response.json(
+      {
+        error:
+          'Você não tem permissão pra enviar NF-e para essa empresa. Verifique se está logado na conta correta do portal.',
+      },
+      { status: 403 },
+    );
+  }
+
   const docId = randomUUID();
   const supplierFolder = supplier.id;
   let xmlPath: string | null = null;
   let pdfPath: string | null = null;
 
-  // Sobe arquivos
+  // Sobe arquivos — buffer + mimeType vêm de validateUpload acima
   try {
-    if (xmlFile instanceof File && xmlFile.size > 0) {
+    if (xmlSafe?.ok && xmlFile instanceof File) {
       xmlPath = `${supplierFolder}/${docId}/${safeName(xmlFile.name)}`;
-      const buf = Buffer.from(await xmlFile.arrayBuffer());
       const { error } = await admin.storage
         .from('fiscal-documents')
-        .upload(xmlPath, buf, {
-          contentType: xmlFile.type || 'text/xml',
+        .upload(xmlPath, xmlSafe.buffer, {
+          contentType: xmlSafe.mimeType,
           upsert: false,
         });
       if (error) throw new Error(`Upload XML: ${error.message}`);
     }
-    if (pdfFile instanceof File && pdfFile.size > 0) {
+    if (pdfSafe?.ok && pdfFile instanceof File) {
       pdfPath = `${supplierFolder}/${docId}/${safeName(pdfFile.name)}`;
-      const buf = Buffer.from(await pdfFile.arrayBuffer());
       const { error } = await admin.storage
         .from('fiscal-documents')
-        .upload(pdfPath, buf, {
-          contentType: pdfFile.type || 'application/pdf',
+        .upload(pdfPath, pdfSafe.buffer, {
+          contentType: pdfSafe.mimeType,
           upsert: false,
         });
       if (error) throw new Error(`Upload PDF: ${error.message}`);
