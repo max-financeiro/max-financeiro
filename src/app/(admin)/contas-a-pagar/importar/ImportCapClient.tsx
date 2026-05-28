@@ -239,26 +239,36 @@ export function ImportCapClient({
             </select>
           </Field>
 
-          <Field label="Fornecedor *">
+          <Field label="Fornecedor">
             <select
               name="supplier_id"
-              required
               value={supplierId}
               onChange={(e) => setSupplierId(e.target.value)}
               className="input-field"
             >
-              <option value="">Selecione...</option>
+              <option value="">
+                {extracted?.issuer?.document
+                  ? '— Pré-cadastrar automaticamente —'
+                  : 'Selecione...'}
+              </option>
               {suppliers.map((s) => (
                 <option key={s.id} value={s.id}>
                   {s.trade_name || s.legal_name}
                 </option>
               ))}
             </select>
-            {extracted?.issuer?.document && !supplierId && (
-              <p className="form-hint">
-                Emissor extraído: {extracted.issuer.name} · CNPJ {extracted.issuer.document}.
-                {' '}Cadastre como fornecedor pra vincular.
-              </p>
+            {extracted?.issuer?.document && (
+              <>
+                <input type="hidden" name="issuer_document" value={extracted.issuer.document} />
+                <input type="hidden" name="issuer_name" value={extracted.issuer.name ?? ''} />
+                {!supplierId && (
+                  <p className="form-hint text-emerald-700">
+                    ✓ Vou cadastrar <strong>{extracted.issuer.name ?? 'o emissor'}</strong>
+                    {' '}(CNPJ {extracted.issuer.document}) e enriquecer os dados via Receita
+                    Federal automaticamente.
+                  </p>
+                )}
+              </>
             )}
           </Field>
 

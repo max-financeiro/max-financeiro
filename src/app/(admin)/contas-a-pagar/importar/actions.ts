@@ -9,13 +9,18 @@ import { getAdminClient } from '@/lib/supabase/admin';
 import { createClient } from '@/lib/supabase/server';
 import { logAuditEvent } from '@/lib/auth/audit';
 import { detectAttachmentKind } from '@/lib/cap/extract';
+import { ensureSupplier } from '@/lib/partners/ensure-supplier';
 import type { Json } from '@/types/supabase';
 
 const TAG = '[cap-import]';
 
 const Schema = z.object({
   organization_id: z.string().uuid(),
-  supplier_id: z.string().uuid(),
+  // supplier_id é opcional: se vier vazio mas a extração trouxer CNPJ do
+  // emissor, pré-cadastramos um fornecedor automaticamente (ver abaixo).
+  supplier_id: z.string().uuid().optional().or(z.literal('')),
+  issuer_document: z.string().optional().or(z.literal('')),
+  issuer_name: z.string().optional().or(z.literal('')),
   cost_center_id: z.string().uuid().optional().or(z.literal('')),
   account_id: z.string().uuid().optional().or(z.literal('')),
   amount: z.coerce.number().positive().max(1_000_000),
@@ -59,7 +64,12 @@ export async function importCapAction(
     values[k] = g(k);
   }
 
-  const parsed = Schema.safeParse({ ...values, ai_extraction: g('ai_extraction') });
+  const parsed = Schema.safeParse({
+    ...values,
+    issuer_document: g('issuer_document'),
+    issuer_name: g('issuer_name'),
+    ai_extraction: g('ai_extraction'),
+  });
 
   if (!parsed.success) {
     const firstError = parsed.error.issues[0];
@@ -98,11 +108,44 @@ export async function importCapAction(
   const admin = getAdminClient();
 
   // ============================================================
+  // 0. Resolve supplier: usa selecionado, senão pré-cadastra pelo CNPJ
+  //    extraído pela IA (issuer do documento).
+  // ============================================================
+  let supplierId = parsed.data.supplier_id || '';
+  let supplierAutoCreated = false;
+  if (!supplierId) {
+    const issuerDoc = (parsed.data.issuer_document ?? '').replace(/\D/g, '');
+    if (!issuerDoc || issuerDoc.length < 11) {
+      return {
+        ok: false,
+        error: 'Selecione um fornecedor ou anexe um documento com CNPJ legível.',
+        values,
+      };
+    }
+    const ensured = await ensureSupplier({
+      admin,
+      organizationId: parsed.data.organization_id,
+      document: issuerDoc,
+      fallbackName: parsed.data.issuer_name || null,
+      source: 'cap_import',
+    });
+    if (!ensured) {
+      return {
+        ok: false,
+        error: 'Não consegui pré-cadastrar o fornecedor. Cadastre manualmente e tente de novo.',
+        values,
+      };
+    }
+    supplierId = ensured.supplierId;
+    supplierAutoCreated = ensured.created;
+  }
+
+  // ============================================================
   // 1. Cria CAP
   // ============================================================
   const payload = {
     organization_id: parsed.data.organization_id,
-    supplier_id: parsed.data.supplier_id,
+    supplier_id: supplierId,
     cost_center_id: parsed.data.cost_center_id || null,
     account_id: parsed.data.account_id || null,
     amount: parsed.data.amount,
@@ -214,6 +257,8 @@ export async function importCapAction(
       level_required: finalLevel,
       source: 'ai_import',
       file_name: file.name,
+      supplier_id: supplierId,
+      supplier_auto_created: supplierAutoCreated,
     },
     organizationId: parsed.data.organization_id,
   });
