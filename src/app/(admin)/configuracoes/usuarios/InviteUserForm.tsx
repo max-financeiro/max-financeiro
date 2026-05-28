@@ -131,8 +131,25 @@ export function InviteUserForm({ orgs }: { orgs: OrgOption[] }) {
         </div>
       )}
       {state?.ok === true && (
-        <div className="rounded-lg border border-success-100 bg-success-50 px-4 py-3">
+        <div className="rounded-lg border border-success-100 bg-success-50 px-4 py-3 space-y-2">
           <p className="text-body-sm text-success-900">✓ {state.message}</p>
+          {state.manualLink && (
+            <div className="bg-white border border-warning-200 rounded-md p-3">
+              <p className="text-caption text-warning-900 font-medium mb-1">
+                Link manual (válido por 15 minutos):
+              </p>
+              <code className="block text-[11px] text-ink-700 break-all bg-ink-50 px-2 py-1.5 rounded">
+                {state.manualLink}
+              </code>
+              <button
+                type="button"
+                onClick={() => navigator.clipboard.writeText(state.manualLink!)}
+                className="mt-1.5 text-[11px] text-pink-700 hover:underline"
+              >
+                Copiar link
+              </button>
+            </div>
+          )}
         </div>
       )}
 

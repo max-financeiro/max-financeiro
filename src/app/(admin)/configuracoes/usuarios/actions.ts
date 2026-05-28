@@ -1,12 +1,32 @@
 'use server';
 
 import { z } from 'zod';
+import { headers } from 'next/headers';
 import { revalidatePath } from 'next/cache';
 // SERVICE_ROLE: cria auth.users + user_profiles + user_org_access. Master only.
 // eslint-disable-next-line no-restricted-imports
 import { getAdminClient } from '@/lib/supabase/admin';
 import { createClient } from '@/lib/supabase/server';
 import { logAuditEvent } from '@/lib/auth/audit';
+import { sendUserInviteEmail } from '@/lib/email/user-invite';
+
+async function generateAdminMagicLink(email: string): Promise<string | null> {
+  const admin = getAdminClient();
+  const h = await headers();
+  const origin =
+    h.get('origin') ??
+    `https://${h.get('x-forwarded-host') ?? h.get('host') ?? 'www.financeiromaxfem.com.br'}`;
+  const redirectTo = `${origin}/auth/callback?next=${encodeURIComponent('/dashboard')}`;
+
+  const { data: linkData } = await admin.auth.admin.generateLink({
+    type: 'magiclink',
+    email,
+    options: { redirectTo },
+  });
+  const hashedToken = linkData?.properties?.hashed_token;
+  if (!hashedToken) return null;
+  return `${origin}/entrar?t=${encodeURIComponent(hashedToken)}&n=${encodeURIComponent('/dashboard')}`;
+}
 
 const InviteSchema = z.object({
   email: z.string().email().toLowerCase(),
@@ -27,7 +47,7 @@ const UpdateAccessSchema = z.object({
 
 export type FormState =
   | { ok: false; error: string }
-  | { ok: true; message: string }
+  | { ok: true; message: string; manualLink?: string }
   | null;
 
 async function requireMaster() {
@@ -106,12 +126,30 @@ export async function inviteUserAction(_prev: FormState, formData: FormData): Pr
     );
   }
 
-  // Gera magic link de primeiro acesso (admin pode copiar e mandar pelo canal preferido)
-  await admin.auth.admin.generateLink({
-    type: 'magiclink',
-    email: parsed.data.email,
-    options: { redirectTo: `https://www.financeiromaxfem.com.br/auth/callback?next=/dashboard` },
-  });
+  // Gera magic link + envia email via Resend com template Maxfem
+  const magicLink = await generateAdminMagicLink(parsed.data.email);
+  let emailSent = false;
+  let emailError: string | null = null;
+
+  if (magicLink) {
+    const { data: inviterProfile } = await admin
+      .from('user_profiles')
+      .select('full_name')
+      .eq('user_id', auth.user.id)
+      .maybeSingle();
+
+    const sendResult = await sendUserInviteEmail({
+      email: parsed.data.email,
+      fullName: parsed.data.full_name,
+      role: parsed.data.role,
+      magicLink,
+      invitedByName: inviterProfile?.full_name ?? 'Master Maxfem',
+    });
+    emailSent = sendResult.ok;
+    if (!sendResult.ok) emailError = sendResult.error;
+  } else {
+    emailError = 'Falha ao gerar link de primeiro acesso';
+  }
 
   await logAuditEvent(auth.supabase, {
     action: 'user.invited',
@@ -122,13 +160,82 @@ export async function inviteUserAction(_prev: FormState, formData: FormData): Pr
       full_name: parsed.data.full_name,
       role: parsed.data.role,
       org_count: orgIds.length,
+      email_sent: emailSent,
+      email_error: emailError,
     },
   });
 
   revalidatePath('/configuracoes/usuarios');
+
+  if (emailSent) {
+    return {
+      ok: true,
+      message: `${parsed.data.full_name} convidado(a). Email de primeiro acesso enviado pra ${parsed.data.email}.`,
+    };
+  }
   return {
     ok: true,
-    message: `${parsed.data.full_name} convidado(a). Receberá email de primeiro acesso.`,
+    message: `${parsed.data.full_name} cadastrado(a), mas o email não foi enviado (${emailError ?? 'erro desconhecido'}). Copie o link abaixo e envie manualmente.`,
+    manualLink: magicLink ?? undefined,
+  };
+}
+
+// ============================================================
+// Reenviar convite (gera novo link + email)
+// ============================================================
+const ResendSchema = z.object({
+  user_id: z.string().uuid(),
+});
+
+export async function resendInviteAction(_prev: FormState, formData: FormData): Promise<FormState> {
+  const auth = await requireMaster();
+  if (auth.error || !auth.user) return { ok: false, error: auth.error ?? 'Não autenticado' };
+
+  const parsed = ResendSchema.safeParse({ user_id: formData.get('user_id') });
+  if (!parsed.success) return { ok: false, error: 'ID inválido' };
+
+  const admin = getAdminClient();
+  const { data: target } = await admin.auth.admin.getUserById(parsed.data.user_id);
+  if (!target?.user?.email) return { ok: false, error: 'Usuário sem email cadastrado' };
+
+  const { data: profile } = await admin
+    .from('user_profiles')
+    .select('full_name, role')
+    .eq('user_id', parsed.data.user_id)
+    .maybeSingle();
+  if (!profile) return { ok: false, error: 'Perfil não encontrado' };
+
+  const magicLink = await generateAdminMagicLink(target.user.email);
+  if (!magicLink) return { ok: false, error: 'Falha ao gerar link' };
+
+  const { data: inviterProfile } = await admin
+    .from('user_profiles')
+    .select('full_name')
+    .eq('user_id', auth.user.id)
+    .maybeSingle();
+
+  const sendResult = await sendUserInviteEmail({
+    email: target.user.email,
+    fullName: profile.full_name,
+    role: profile.role,
+    magicLink,
+    invitedByName: inviterProfile?.full_name ?? 'Master Maxfem',
+  });
+
+  await logAuditEvent(auth.supabase, {
+    action: 'user.invite_resent',
+    entityType: 'user_profiles',
+    entityId: parsed.data.user_id,
+    afterState: { email_sent: sendResult.ok, email_error: sendResult.ok ? null : sendResult.error },
+  });
+
+  if (sendResult.ok) {
+    return { ok: true, message: `Convite reenviado pra ${target.user.email}.` };
+  }
+  return {
+    ok: true,
+    message: `Não consegui enviar (${sendResult.error}). Use o link manual:`,
+    manualLink: magicLink,
   };
 }
 

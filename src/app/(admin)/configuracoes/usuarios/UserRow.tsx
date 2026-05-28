@@ -4,6 +4,7 @@ import { useActionState, useState, useTransition } from 'react';
 import { Badge, Button } from '@/components/ui';
 import {
   deactivateUserAction,
+  resendInviteAction,
   updateUserAccessAction,
   updateUserRoleAction,
   type FormState,
@@ -51,7 +52,14 @@ export function UserRow({
   const [roleState, roleAction] = useActionState<FormState, FormData>(updateUserRoleAction, null);
   const [accessState, accessAction] = useActionState<FormState, FormData>(updateUserAccessAction, null);
   const [deleteState, deleteAction] = useActionState<FormState, FormData>(deactivateUserAction, null);
+  const [resendState, resendAction] = useActionState<FormState, FormData>(resendInviteAction, null);
   const [pending, startTransition] = useTransition();
+
+  function handleResend() {
+    const fd = new FormData();
+    fd.set('user_id', profile.user_id);
+    startTransition(() => resendAction(fd));
+  }
 
   function toggleOrg(id: string) {
     setOrgIds((prev) => {
@@ -113,6 +121,16 @@ export function UserRow({
               <span className="text-ink-300">·</span>
               <button
                 type="button"
+                onClick={handleResend}
+                disabled={pending}
+                className="text-caption font-medium text-ink-600 hover:text-pink-700 transition-colors disabled:opacity-50"
+                title="Gera novo magic link e reenvia por email"
+              >
+                Reenviar convite
+              </button>
+              <span className="text-ink-300">·</span>
+              <button
+                type="button"
                 onClick={handleDeactivate}
                 disabled={pending}
                 className="text-caption font-medium text-ink-500 hover:text-danger-700 transition-colors disabled:opacity-50"
@@ -123,6 +141,29 @@ export function UserRow({
           )}
         </div>
       </div>
+
+      {resendState?.ok === true && (
+        <div className="mt-3 rounded-md border border-success-100 bg-success-50 px-3 py-2 space-y-2">
+          <p className="text-caption text-success-900">✓ {resendState.message}</p>
+          {resendState.manualLink && (
+            <div className="bg-white border border-warning-200 rounded-md p-2">
+              <code className="block text-[11px] text-ink-700 break-all bg-ink-50 px-2 py-1 rounded">
+                {resendState.manualLink}
+              </code>
+              <button
+                type="button"
+                onClick={() => navigator.clipboard.writeText(resendState.manualLink!)}
+                className="mt-1 text-[11px] text-pink-700 hover:underline"
+              >
+                Copiar link
+              </button>
+            </div>
+          )}
+        </div>
+      )}
+      {resendState?.ok === false && (
+        <p className="mt-2 text-caption text-danger-700">{resendState.error}</p>
+      )}
 
       {editing && (
         <div className="mt-4 pt-4 border-t border-ink-200/60 space-y-4">
