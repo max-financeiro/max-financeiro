@@ -42,11 +42,11 @@ const SECTIONS: Section[] = [
   },
   {
     title: 'Fiscal & contábil',
-    items: [{ href: '/fiscal', label: 'SPED, exportações', soon: true }],
+    items: [{ href: '/fiscal', label: 'SPED, exportações' }],
   },
   {
     title: 'Relatórios',
-    items: [{ href: '/dre', label: 'DRE gerencial', soon: true }],
+    items: [{ href: '/dre', label: 'DRE gerencial' }],
   },
   {
     title: 'Integrações',
