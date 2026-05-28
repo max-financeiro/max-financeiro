@@ -207,7 +207,22 @@ async function processEvent(
       .eq('id', payment.payable_id)
       .maybeSingle();
     const capAmount = Number(cap?.amount ?? payment.amount);
-    const amountPaid = Math.min(capAmount, Number(payment.amount));
+
+    // Soma TODOS os pagamentos paid pra este CAP (anti-clobber:
+    // pagamento parcial #2 não pode zerar o #1). Inclui o atual.
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const { data: paidPayments } = await (admin as any)
+      .from('payments')
+      .select('amount')
+      .eq('payable_id', payment.payable_id)
+      .eq('provider_status', 'paid');
+    const totalPaid =
+      (paidPayments ?? []).reduce(
+        (acc: number, p: { amount: number | string }) => acc + Number(p.amount ?? 0),
+        0,
+      );
+    const amountPaid = Math.min(capAmount, totalPaid);
+
     await admin
       .from('accounts_payable')
       .update({
@@ -216,11 +231,21 @@ async function processEvent(
       })
       .eq('id', payment.payable_id);
   } else if (mapped === 'failed' || mapped === 'rejected') {
-    // Pagamento não saiu — devolve o CAP pra 'approved' (pode reenviar).
-    await admin
-      .from('accounts_payable')
-      .update({ status: 'approved' })
-      .eq('id', payment.payable_id);
+    // Pagamento não saiu — devolve o CAP pra 'approved' SÓ se nenhum outro
+    // pagamento paid existir (evita perder evidência de pago anterior).
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const { data: stillPaid } = await (admin as any)
+      .from('payments')
+      .select('id')
+      .eq('payable_id', payment.payable_id)
+      .eq('provider_status', 'paid')
+      .limit(1);
+    if (!stillPaid || stillPaid.length === 0) {
+      await admin
+        .from('accounts_payable')
+        .update({ status: 'approved' })
+        .eq('id', payment.payable_id);
+    }
   }
 
   await admin

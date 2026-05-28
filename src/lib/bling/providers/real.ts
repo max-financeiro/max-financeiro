@@ -39,10 +39,23 @@ export class RealBlingProvider implements BlingProvider {
 
   private accessToken: string | null = null;
   private accessTokenExpiresAt: Date | null = null;
+  // Promise singleton — múltiplas chamadas paralelas a authenticate()
+  // (ex: várias requests dentro da mesma sync que dispararam 401) compartilham
+  // o mesmo refresh em andamento. Sem isso, refresh_token rotaciona N vezes
+  // → invalid_grant em produção.
+  private authInFlight: Promise<void> | null = null;
 
   constructor(private readonly opts: RealBlingProviderOpts) {}
 
   async authenticate(): Promise<void> {
+    if (this.authInFlight) return this.authInFlight;
+    this.authInFlight = this.doAuthenticate().finally(() => {
+      this.authInFlight = null;
+    });
+    return this.authInFlight;
+  }
+
+  private async doAuthenticate(): Promise<void> {
     const creds = await this.loadCredentials();
     if (!creds) {
       throw new Error('Bling não conectado pra esta organização — conecte em /integracoes/bling');

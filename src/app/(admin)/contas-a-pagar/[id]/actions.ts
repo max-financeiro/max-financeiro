@@ -462,6 +462,35 @@ export async function requestPaymentAction(
   }
 
   // ============================================================
+  // ANTI-RACE: lock atômico no status. Conditional UPDATE só passa se
+  // ainda for 'approved'; 2º clique simultâneo lê 0 rows e aborta.
+  // Pagar 2× a mesma CAP fica impossível. Restoration em todo failure
+  // path abaixo via `restoreCapStatus()`.
+  // ============================================================
+  const { data: lockedCap, error: lockErr } = await admin
+    .from('accounts_payable')
+    .update({ status: 'sent_to_bank' })
+    .eq('id', cap.id)
+    .eq('status', 'approved')
+    .select('id')
+    .maybeSingle();
+
+  if (lockErr || !lockedCap) {
+    return {
+      ok: false,
+      error: 'Outra solicitação de pagamento já está em andamento pra esta CAP.',
+    };
+  }
+
+  const restoreCapStatus = async () => {
+    await admin
+      .from('accounts_payable')
+      .update({ status: 'approved' })
+      .eq('id', cap.id)
+      .eq('status', 'sent_to_bank');
+  };
+
+  // ============================================================
   // Cria pagamento (idempotency_key UNIQUE evita retry duplicado)
   // ============================================================
   const idempotencyKey = randomUUID();
@@ -485,6 +514,7 @@ export async function requestPaymentAction(
 
   if (payErr || !payment) {
     console.error(TAG, 'payment_insert_failed', payErr);
+    await restoreCapStatus();
     return { ok: false, error: payErr?.message ?? 'Falha ao criar registro de pagamento' };
   }
 
@@ -529,6 +559,7 @@ export async function requestPaymentAction(
           provider_error_message: result.errorMessage ?? null,
         })
         .eq('id', payment.id);
+      await restoreCapStatus();
 
       await logAuditEvent(supabase, {
         action: 'cap.payment_failed',
@@ -561,11 +592,7 @@ export async function requestPaymentAction(
       })
       .eq('id', payment.id);
 
-    // Move CAP pra sent_to_bank
-    await admin
-      .from('accounts_payable')
-      .update({ status: 'sent_to_bank' })
-      .eq('id', cap.id);
+    // CAP já está em 'sent_to_bank' (lock acima) — webhook movera pra 'paid'.
 
     await logAuditEvent(supabase, {
       action: 'cap.payment_requested',
@@ -602,6 +629,7 @@ export async function requestPaymentAction(
         provider_error_message: err instanceof Error ? err.message : 'unknown',
       })
       .eq('id', payment.id);
+    await restoreCapStatus();
     return {
       ok: false,
       error: `Falha no provider de pagamento: ${err instanceof Error ? err.message : 'unknown'}`,
@@ -652,15 +680,17 @@ export async function addAttachmentAction(
     return { ok: false, error: 'Arquivo maior que 10MB' };
   }
 
-  const admin = getAdminClient();
-
-  // Acha organization_id da CAP
-  const { data: cap } = await admin
+  // Lê CAP via client RLS-aware — só vê CAPs das orgs que tem acesso.
+  // Antes usava admin (service_role) sem validar org access → IDOR
+  // cross-tenant. Agora a falha de SELECT indica sem-acesso/inexistente.
+  const { data: cap } = await supabase
     .from('accounts_payable')
     .select('id, organization_id')
     .eq('id', parsed.data.payable_id)
     .maybeSingle();
-  if (!cap) return { ok: false, error: 'CAP não encontrada' };
+  if (!cap) return { ok: false, error: 'CAP não encontrada ou sem acesso' };
+
+  const admin = getAdminClient();
 
   const buffer = Buffer.from(await file.arrayBuffer());
   const mimeType = file.type || 'application/octet-stream';

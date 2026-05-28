@@ -223,12 +223,28 @@ export async function syncInterExtract(admin: Admin, opts: SyncOpts): Promise<Sy
 
 /**
  * Descobre filiais Maxfem que têm bank_account Inter (077) ativa.
- * Se nenhuma estiver cadastrada, retorna [{ org: matriz, bank: null }]
- * como fallback (a matriz é dona da credencial Inter por padrão).
+ *
+ * IMPORTANTE: inter_credentials é GLOBAL (1 credencial ativa, sem
+ * organization_id). Se múltiplas filiais têm bank_account 077, só
+ * retornamos a que casa com a conta_corrente da credencial — caso
+ * contrário o extrato (puxado via credencial global) seria duplicado
+ * pra cada filial, contaminando bank_transactions cross-org.
+ *
+ * Se nenhuma bank_account casa: fallback pra matriz com bankAccountId=null.
  */
 export async function listInterAccounts(
   admin: Admin,
 ): Promise<Array<{ organizationId: string; bankAccountId: string | null; label: string }>> {
+  // Conta corrente da credencial Inter ativa (decryp via RPC)
+  let credentialConta: string | null = null;
+  try {
+    const { loadInterCredentials } = await import('@/lib/inter/credentials');
+    const creds = await loadInterCredentials();
+    credentialConta = creds?.contaCorrente ?? null;
+  } catch {
+    // credential ausente — segue só com fallback matriz
+  }
+
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const { data: accounts } = await (admin as any)
     .from('bank_accounts')
@@ -236,18 +252,37 @@ export async function listInterAccounts(
     .eq('bank_code', '077')
     .eq('is_active', true);
 
-  if (accounts && accounts.length > 0) {
-    return accounts.map((a: {
-      id: string;
-      organization_id: string;
-      display_name: string | null;
-      account_number: string;
-      organizations?: { legal_name: string } | null;
-    }) => ({
-      organizationId: a.organization_id,
-      bankAccountId: a.id,
-      label: a.display_name ?? `${a.organizations?.legal_name ?? 'Filial'} (${a.account_number})`,
-    }));
+  type AccountRow = {
+    id: string;
+    organization_id: string;
+    display_name: string | null;
+    account_number: string;
+    organizations?: { legal_name: string } | null;
+  };
+  const allAccounts: AccountRow[] = accounts ?? [];
+
+  if (allAccounts.length > 0) {
+    // Se temos a conta_corrente da credencial, filtramos só pela match
+    // exata pra evitar duplicar extrato em N orgs.
+    const normalize = (n: string) => String(n ?? '').replace(/\D/g, '');
+    const credConta = credentialConta ? normalize(credentialConta) : null;
+    const filtered = credConta
+      ? allAccounts.filter((a) => normalize(a.account_number) === credConta)
+      : allAccounts;
+
+    const a = filtered[0];
+    if (a) {
+      // Multi-match (>1) seria indicio de cadastro duplicado → mantemos
+      // somente o primeiro pra não duplicar extrato.
+      return [{
+        organizationId: a.organization_id,
+        bankAccountId: a.id,
+        label: a.display_name ?? `${a.organizations?.legal_name ?? 'Filial'} (${a.account_number})`,
+      }];
+    }
+
+    // Há accounts 077 mas nenhuma casa com a credencial → log + fallback matriz
+    console.warn('[listInterAccounts] bank_accounts 077 ativas mas nenhuma bate com a conta_corrente da credencial Inter — usando matriz como fallback');
   }
 
   // Fallback: matriz Maxfem (sem bank_account cadastrada). Pega type='company'

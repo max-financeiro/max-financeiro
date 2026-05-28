@@ -42,6 +42,20 @@ export async function GET(req: Request) {
   const startDate = `${month}-01`;
   const endDate = endOfMonth(month);
 
+  // Validação de acesso cross-tenant: se passou ?org=, o user precisa ter
+  // acesso àquela org (RLS-aware). Sem esse check o admin client logo abaixo
+  // bypassaria RLS e devolveria CSV de outro tenant.
+  if (orgParam) {
+    const { data: orgRow } = await supabase
+      .from('organizations')
+      .select('id')
+      .eq('id', orgParam)
+      .maybeSingle();
+    if (!orgRow) {
+      return new Response('Forbidden: sem acesso à organização', { status: 403 });
+    }
+  }
+
   const admin = getAdminClient();
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   let q = (admin as any)
