@@ -10,22 +10,37 @@ import { createClient } from '@/lib/supabase/server';
 import { logAuditEvent } from '@/lib/auth/audit';
 import { sendUserInviteEmail } from '@/lib/email/user-invite';
 
-async function generateAdminMagicLink(email: string): Promise<string | null> {
-  const admin = getAdminClient();
-  const h = await headers();
-  const origin =
-    h.get('origin') ??
-    `https://${h.get('x-forwarded-host') ?? h.get('host') ?? 'www.financeiromaxfem.com.br'}`;
-  const redirectTo = `${origin}/auth/callback?next=${encodeURIComponent('/dashboard')}`;
+async function generateAdminMagicLink(email: string): Promise<{ link: string | null; error: string | null }> {
+  try {
+    const admin = getAdminClient();
+    const h = await headers();
+    const origin =
+      h.get('origin') ??
+      `https://${h.get('x-forwarded-host') ?? h.get('host') ?? 'www.financeiromaxfem.com.br'}`;
+    const redirectTo = `${origin}/auth/callback?next=${encodeURIComponent('/dashboard')}`;
 
-  const { data: linkData } = await admin.auth.admin.generateLink({
-    type: 'magiclink',
-    email,
-    options: { redirectTo },
-  });
-  const hashedToken = linkData?.properties?.hashed_token;
-  if (!hashedToken) return null;
-  return `${origin}/entrar?t=${encodeURIComponent(hashedToken)}&n=${encodeURIComponent('/dashboard')}`;
+    const { data: linkData, error: linkErr } = await admin.auth.admin.generateLink({
+      type: 'magiclink',
+      email,
+      options: { redirectTo },
+    });
+    if (linkErr) {
+      console.error('[generateAdminMagicLink] supabase erro:', linkErr.message);
+      return { link: null, error: `Supabase generateLink: ${linkErr.message}` };
+    }
+    const hashedToken = linkData?.properties?.hashed_token;
+    if (!hashedToken) {
+      return { link: null, error: 'generateLink retornou sem hashed_token' };
+    }
+    return {
+      link: `${origin}/entrar?t=${encodeURIComponent(hashedToken)}&n=${encodeURIComponent('/dashboard')}`,
+      error: null,
+    };
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    console.error('[generateAdminMagicLink] threw:', msg);
+    return { link: null, error: msg };
+  }
 }
 
 const InviteSchema = z.object({
@@ -127,9 +142,10 @@ export async function inviteUserAction(_prev: FormState, formData: FormData): Pr
   }
 
   // Gera magic link + envia email via Resend com template Maxfem
-  const magicLink = await generateAdminMagicLink(parsed.data.email);
+  const linkResult = await generateAdminMagicLink(parsed.data.email);
+  const magicLink = linkResult.link;
   let emailSent = false;
-  let emailError: string | null = null;
+  let emailError: string | null = linkResult.error;
 
   if (magicLink) {
     const { data: inviterProfile } = await admin
@@ -138,32 +154,40 @@ export async function inviteUserAction(_prev: FormState, formData: FormData): Pr
       .eq('user_id', auth.user.id)
       .maybeSingle();
 
-    const sendResult = await sendUserInviteEmail({
-      email: parsed.data.email,
-      fullName: parsed.data.full_name,
-      role: parsed.data.role,
-      magicLink,
-      invitedByName: inviterProfile?.full_name ?? 'Master Maxfem',
-    });
-    emailSent = sendResult.ok;
-    if (!sendResult.ok) emailError = sendResult.error;
-  } else {
-    emailError = 'Falha ao gerar link de primeiro acesso';
+    try {
+      const sendResult = await sendUserInviteEmail({
+        email: parsed.data.email,
+        fullName: parsed.data.full_name,
+        role: parsed.data.role,
+        magicLink,
+        invitedByName: inviterProfile?.full_name ?? 'Master Maxfem',
+      });
+      emailSent = sendResult.ok;
+      if (!sendResult.ok) emailError = `Resend: ${sendResult.error}`;
+    } catch (err) {
+      emailError = `Resend threw: ${err instanceof Error ? err.message : String(err)}`;
+      console.error('[inviteUserAction] sendEmail threw:', emailError);
+    }
   }
 
-  await logAuditEvent(auth.supabase, {
-    action: 'user.invited',
-    entityType: 'user_profiles',
-    entityId: newUserId,
-    afterState: {
-      email: parsed.data.email,
-      full_name: parsed.data.full_name,
-      role: parsed.data.role,
-      org_count: orgIds.length,
-      email_sent: emailSent,
-      email_error: emailError,
-    },
-  });
+  // Audit best-effort — não derruba a action se logger falhar
+  try {
+    await logAuditEvent(auth.supabase, {
+      action: 'user.invited',
+      entityType: 'user_profiles',
+      entityId: newUserId,
+      afterState: {
+        email: parsed.data.email,
+        full_name: parsed.data.full_name,
+        role: parsed.data.role,
+        org_count: orgIds.length,
+        email_sent: emailSent,
+        email_error: emailError,
+      },
+    });
+  } catch (err) {
+    console.error('[inviteUserAction] logAudit threw:', err instanceof Error ? err.message : err);
+  }
 
   revalidatePath('/configuracoes/usuarios');
 
@@ -205,8 +229,11 @@ export async function resendInviteAction(_prev: FormState, formData: FormData): 
     .maybeSingle();
   if (!profile) return { ok: false, error: 'Perfil não encontrado' };
 
-  const magicLink = await generateAdminMagicLink(target.user.email);
-  if (!magicLink) return { ok: false, error: 'Falha ao gerar link' };
+  const linkResult = await generateAdminMagicLink(target.user.email);
+  if (!linkResult.link) {
+    return { ok: false, error: `Falha ao gerar link: ${linkResult.error ?? 'desconhecido'}` };
+  }
+  const magicLink = linkResult.link;
 
   const { data: inviterProfile } = await admin
     .from('user_profiles')
@@ -214,27 +241,40 @@ export async function resendInviteAction(_prev: FormState, formData: FormData): 
     .eq('user_id', auth.user.id)
     .maybeSingle();
 
-  const sendResult = await sendUserInviteEmail({
-    email: target.user.email,
-    fullName: profile.full_name,
-    role: profile.role,
-    magicLink,
-    invitedByName: inviterProfile?.full_name ?? 'Master Maxfem',
-  });
+  let emailSent = false;
+  let emailError: string | null = null;
+  try {
+    const sendResult = await sendUserInviteEmail({
+      email: target.user.email,
+      fullName: profile.full_name,
+      role: profile.role,
+      magicLink,
+      invitedByName: inviterProfile?.full_name ?? 'Master Maxfem',
+    });
+    emailSent = sendResult.ok;
+    if (!sendResult.ok) emailError = sendResult.error;
+  } catch (err) {
+    emailError = err instanceof Error ? err.message : String(err);
+    console.error('[resendInviteAction] sendEmail threw:', emailError);
+  }
 
-  await logAuditEvent(auth.supabase, {
-    action: 'user.invite_resent',
-    entityType: 'user_profiles',
-    entityId: parsed.data.user_id,
-    afterState: { email_sent: sendResult.ok, email_error: sendResult.ok ? null : sendResult.error },
-  });
+  try {
+    await logAuditEvent(auth.supabase, {
+      action: 'user.invite_resent',
+      entityType: 'user_profiles',
+      entityId: parsed.data.user_id,
+      afterState: { email_sent: emailSent, email_error: emailError },
+    });
+  } catch (err) {
+    console.error('[resendInviteAction] logAudit threw:', err instanceof Error ? err.message : err);
+  }
 
-  if (sendResult.ok) {
+  if (emailSent) {
     return { ok: true, message: `Convite reenviado pra ${target.user.email}.` };
   }
   return {
     ok: true,
-    message: `Não consegui enviar (${sendResult.error}). Use o link manual:`,
+    message: `Não consegui enviar (${emailError ?? 'erro desconhecido'}). Use o link manual:`,
     manualLink: magicLink,
   };
 }
