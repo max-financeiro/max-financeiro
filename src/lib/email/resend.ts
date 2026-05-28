@@ -16,6 +16,16 @@ import { getAdminClient } from '@/lib/supabase/admin';
 
 const RESEND_API = 'https://api.resend.com/emails';
 
+/**
+ * Resend tags só aceitam ASCII alfanumérico + underscore + dash.
+ * Substituímos qualquer outro char (ponto, espaço, acentos) por underscore.
+ */
+function sanitizeTag(value: string): string {
+  return String(value ?? '')
+    .replace(/[^A-Za-z0-9_-]/g, '_')
+    .slice(0, 256);
+}
+
 export interface SendEmailOptions {
   to: string | string[];
   subject: string;
@@ -101,7 +111,7 @@ export async function sendEmail(opts: SendEmailOptions): Promise<SendEmailResult
         html: opts.html,
         text: opts.text,
         reply_to: opts.replyTo ?? config.replyTo ?? undefined,
-        tags: opts.tag ? [{ name: 'action', value: opts.tag }] : undefined,
+        tags: opts.tag ? [{ name: 'action', value: sanitizeTag(opts.tag) }] : undefined,
       }),
       signal: AbortSignal.timeout(8000),
     });
@@ -140,7 +150,7 @@ export async function sendTestEmail(opts: {
         subject: '[Maxfem] Teste de conexão Resend',
         html: '<p>Se você recebeu este email, a credencial Resend está configurada corretamente no sistema financeiro Maxfem.</p>',
         text: 'Se você recebeu este email, a credencial Resend está configurada corretamente no sistema financeiro Maxfem.',
-        tags: [{ name: 'action', value: 'resend.connection_test' }],
+        tags: [{ name: 'action', value: 'resend_connection_test' }],
       }),
       signal: AbortSignal.timeout(10_000),
     });
