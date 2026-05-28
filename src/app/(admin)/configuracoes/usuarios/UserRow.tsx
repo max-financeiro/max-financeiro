@@ -4,6 +4,8 @@ import { useActionState, useState, useTransition } from 'react';
 import { Badge, Button } from '@/components/ui';
 import {
   deactivateUserAction,
+  deleteUserAction,
+  reactivateUserAction,
   resendInviteAction,
   updateUserAccessAction,
   updateUserRoleAction,
@@ -32,6 +34,7 @@ type Profile = {
   role: string;
   email: string;
   org_ids: string[];
+  deleted_at?: string | null;
 };
 
 type OrgOption = { id: string; label: string };
@@ -48,12 +51,31 @@ export function UserRow({
   const [editing, setEditing] = useState(false);
   const [role, setRole] = useState(profile.role);
   const [orgIds, setOrgIds] = useState<Set<string>>(new Set(profile.org_ids));
+  const [deleteMode, setDeleteMode] = useState(false);
+  const [confirmEmail, setConfirmEmail] = useState('');
+
+  const isDeactivated = !!profile.deleted_at;
 
   const [roleState, roleAction] = useActionState<FormState, FormData>(updateUserRoleAction, null);
   const [accessState, accessAction] = useActionState<FormState, FormData>(updateUserAccessAction, null);
-  const [deleteState, deleteAction] = useActionState<FormState, FormData>(deactivateUserAction, null);
+  const [deactivateState, deactivateAction] = useActionState<FormState, FormData>(deactivateUserAction, null);
+  const [reactivateState, reactivateAction] = useActionState<FormState, FormData>(reactivateUserAction, null);
+  const [deleteState, deleteAction] = useActionState<FormState, FormData>(deleteUserAction, null);
   const [resendState, resendAction] = useActionState<FormState, FormData>(resendInviteAction, null);
   const [pending, startTransition] = useTransition();
+
+  function handleDelete() {
+    const fd = new FormData();
+    fd.set('user_id', profile.user_id);
+    fd.set('confirm_email', confirmEmail.trim().toLowerCase());
+    startTransition(() => deleteAction(fd));
+  }
+
+  function handleReactivate() {
+    const fd = new FormData();
+    fd.set('user_id', profile.user_id);
+    startTransition(() => reactivateAction(fd));
+  }
 
   function handleResend() {
     const fd = new FormData();
@@ -86,10 +108,10 @@ export function UserRow({
   }
 
   function handleDeactivate() {
-    if (!confirm(`Desativar ${profile.full_name}? Pode reativar depois via DB.`)) return;
+    if (!confirm(`Desativar ${profile.full_name}? Mantém o histórico — pode reativar aqui mesmo depois.`)) return;
     const fd = new FormData();
     fd.set('user_id', profile.user_id);
-    startTransition(() => deleteAction(fd));
+    startTransition(() => deactivateAction(fd));
   }
 
   const orgsLabel = profile.org_ids.length
@@ -97,26 +119,29 @@ export function UserRow({
     : 'sem acessos';
 
   return (
-    <div className="px-5 py-4">
+    <div className={`px-5 py-4 ${isDeactivated ? 'opacity-60' : ''}`}>
       <div className="flex items-start justify-between gap-4">
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2 flex-wrap">
             <p className="font-semibold text-body text-ink-900">{profile.full_name}</p>
             <Badge tone={ROLE_TONE[profile.role]}>{ROLE_LABEL[profile.role] ?? profile.role}</Badge>
             {isSelf && <Badge tone="ink">Você</Badge>}
+            {isDeactivated && <Badge tone="neutral">Desativado</Badge>}
           </div>
           <p className="text-caption text-ink-500 mt-0.5 font-mono">{profile.email}</p>
           <p className="text-caption text-ink-500 mt-0.5">{orgsLabel}</p>
         </div>
         <div className="flex items-center gap-3 shrink-0">
-          <button
-            type="button"
-            onClick={() => setEditing((e) => !e)}
-            className="text-caption font-medium text-pink-700 hover:text-pink-800"
-          >
-            {editing ? 'Fechar' : 'Editar'}
-          </button>
-          {!isSelf && (
+          {!isDeactivated && (
+            <button
+              type="button"
+              onClick={() => setEditing((e) => !e)}
+              className="text-caption font-medium text-pink-700 hover:text-pink-800"
+            >
+              {editing ? 'Fechar' : 'Editar'}
+            </button>
+          )}
+          {!isSelf && !isDeactivated && (
             <>
               <span className="text-ink-300">·</span>
               <button
@@ -133,14 +158,107 @@ export function UserRow({
                 type="button"
                 onClick={handleDeactivate}
                 disabled={pending}
-                className="text-caption font-medium text-ink-500 hover:text-danger-700 transition-colors disabled:opacity-50"
+                className="text-caption font-medium text-ink-500 hover:text-amber-700 transition-colors disabled:opacity-50"
+                title="Soft-delete reversível — mantém histórico"
               >
                 Desativar
+              </button>
+              <span className="text-ink-300">·</span>
+              <button
+                type="button"
+                onClick={() => { setDeleteMode((m) => !m); setConfirmEmail(''); }}
+                disabled={pending}
+                className="text-caption font-medium text-rose-700 hover:text-rose-900 transition-colors disabled:opacity-50"
+                title="Hard delete — remove permanentemente (LGPD/cleanup)"
+              >
+                {deleteMode ? 'Cancelar' : 'Excluir'}
+              </button>
+            </>
+          )}
+          {!isSelf && isDeactivated && (
+            <>
+              <button
+                type="button"
+                onClick={handleReactivate}
+                disabled={pending}
+                className="text-caption font-medium text-emerald-700 hover:text-emerald-900 transition-colors disabled:opacity-50"
+              >
+                Reativar
+              </button>
+              <span className="text-ink-300">·</span>
+              <button
+                type="button"
+                onClick={() => { setDeleteMode((m) => !m); setConfirmEmail(''); }}
+                disabled={pending}
+                className="text-caption font-medium text-rose-700 hover:text-rose-900 transition-colors disabled:opacity-50"
+              >
+                {deleteMode ? 'Cancelar' : 'Excluir'}
               </button>
             </>
           )}
         </div>
       </div>
+
+      {deleteMode && (
+        <div className="mt-4 p-4 rounded-lg border-2 border-rose-300 bg-rose-50 space-y-3">
+          <div>
+            <p className="text-body-sm font-semibold text-rose-900">
+              Excluir <strong>{profile.full_name}</strong> permanentemente
+            </p>
+            <p className="text-caption text-rose-800 mt-1">
+              Remove auth.users + user_profiles + user_org_access. Audit log fica
+              registrado (action=user.hard_deleted) com nome, role e hash do email.
+              <strong> Não reversível.</strong>
+            </p>
+          </div>
+          <div>
+            <label className="form-label text-rose-900">
+              Pra confirmar, digite o email exato do usuário
+            </label>
+            <input
+              type="email"
+              value={confirmEmail}
+              onChange={(e) => setConfirmEmail(e.target.value)}
+              placeholder={profile.email}
+              className="input-field"
+              autoComplete="off"
+            />
+          </div>
+          <div className="flex justify-end gap-2">
+            <button
+              type="button"
+              onClick={() => { setDeleteMode(false); setConfirmEmail(''); }}
+              className="btn-secondary text-caption"
+            >
+              Cancelar
+            </button>
+            <button
+              type="button"
+              onClick={handleDelete}
+              disabled={pending || confirmEmail.trim().toLowerCase() !== profile.email.toLowerCase()}
+              className="px-3 py-1.5 rounded-md bg-rose-700 text-white text-caption font-medium hover:bg-rose-800 disabled:opacity-50"
+            >
+              {pending ? 'Excluindo…' : 'Excluir permanentemente'}
+            </button>
+          </div>
+          {deleteState?.ok === false && (
+            <p className="text-caption text-rose-800 font-medium">{deleteState.error}</p>
+          )}
+        </div>
+      )}
+
+      {reactivateState?.ok === true && (
+        <p className="mt-2 text-caption text-emerald-700">✓ {reactivateState.message}</p>
+      )}
+      {reactivateState?.ok === false && (
+        <p className="mt-2 text-caption text-rose-700">{reactivateState.error}</p>
+      )}
+      {deactivateState?.ok === true && (
+        <p className="mt-2 text-caption text-amber-700">✓ {deactivateState.message}</p>
+      )}
+      {deactivateState?.ok === false && (
+        <p className="mt-2 text-caption text-rose-700">{deactivateState.error}</p>
+      )}
 
       {resendState?.ok === true && (
         <div className="mt-3 rounded-md border border-success-100 bg-success-50 px-3 py-2 space-y-2">
@@ -234,10 +352,6 @@ export function UserRow({
               <p className="text-caption text-success-700 mt-1">✓ {accessState.message}</p>
             )}
           </div>
-
-          {deleteState?.ok === false && (
-            <p className="text-caption text-danger-700">{deleteState.error}</p>
-          )}
         </div>
       )}
     </div>

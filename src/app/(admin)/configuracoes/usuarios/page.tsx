@@ -4,7 +4,7 @@ import { createClient } from '@/lib/supabase/server';
 // SERVICE_ROLE: precisa ver auth.users pra emails (admin api). Já valida master antes.
 // eslint-disable-next-line no-restricted-imports
 import { getAdminClient } from '@/lib/supabase/admin';
-import { Badge, Card, PageHeader } from '@/components/ui';
+import { Card, PageHeader } from '@/components/ui';
 import { InviteUserForm } from './InviteUserForm';
 import { UserRow } from './UserRow';
 
@@ -138,19 +138,25 @@ export default async function UsuariosPage() {
         )}
 
         {inactive.length > 0 && (
-          <details className="mt-6">
+          <details className="mt-6" open>
             <summary className="cursor-pointer text-caption font-medium text-ink-500">
-              Inativos ({inactive.length})
+              Desativados ({inactive.length}) — clique pra reativar ou excluir
             </summary>
-            <Card className="divide-y divide-ink-200/60 mt-3 opacity-60">
+            <Card className="divide-y divide-ink-200/60 mt-3">
               {inactive.map((p) => (
-                <div key={p.user_id} className="px-5 py-3 flex items-center justify-between">
-                  <div>
-                    <p className="text-body-sm text-ink-700">{p.full_name}</p>
-                    <p className="text-caption text-ink-500">{emailMap.get(p.user_id)}</p>
-                  </div>
-                  <Badge tone="neutral">{ROLE_LABEL[p.role] ?? p.role}</Badge>
-                </div>
+                <UserRow
+                  key={p.user_id}
+                  profile={{
+                    user_id: p.user_id,
+                    full_name: p.full_name,
+                    role: p.role,
+                    email: emailMap.get(p.user_id) ?? '—',
+                    org_ids: accessByUser.get(p.user_id) ?? [],
+                    deleted_at: p.deleted_at,
+                  }}
+                  isSelf={p.user_id === user.id}
+                  orgs={orgOptions}
+                />
               ))}
             </Card>
           </details>

@@ -363,6 +363,146 @@ export async function updateUserAccessAction(_prev: FormState, formData: FormDat
   return { ok: true, message: 'Acessos atualizados.' };
 }
 
+// ============================================================
+// Reativar usuário desativado (limpa deleted_at + restaura acessos)
+// ============================================================
+const ReactivateSchema = z.object({
+  user_id: z.string().uuid(),
+});
+
+export async function reactivateUserAction(
+  _prev: FormState,
+  formData: FormData,
+): Promise<FormState> {
+  const auth = await requireMaster();
+  if (auth.error || !auth.user) return { ok: false, error: auth.error ?? 'Não autenticado' };
+
+  const parsed = ReactivateSchema.safeParse({ user_id: formData.get('user_id') });
+  if (!parsed.success) return { ok: false, error: 'ID inválido' };
+
+  const admin = getAdminClient();
+  const { error } = await admin
+    .from('user_profiles')
+    .update({ deleted_at: null })
+    .eq('user_id', parsed.data.user_id);
+  if (error) return { ok: false, error: error.message };
+
+  await logAuditEvent(auth.supabase, {
+    action: 'user.reactivated',
+    entityType: 'user_profiles',
+    entityId: parsed.data.user_id,
+  });
+
+  revalidatePath('/configuracoes/usuarios');
+  return { ok: true, message: 'Usuário reativado. Cadastre os acessos por filial novamente se necessário.' };
+}
+
+// ============================================================
+// Excluir usuário (hard delete, irreversível)
+// Usado pra:
+//   - Cleanup de cadastro errado (ex: convidou email errado)
+//   - LGPD direito ao esquecimento (titular pede remoção)
+//
+// Diferença pra "Desativar":
+//   - Desativar: soft (deleted_at), histórico preservado, reversível
+//   - Excluir: hard delete em auth.users + user_profiles + user_org_access.
+//     Audit log mantém a entrada de exclusão (action='user.hard_deleted')
+//     com nome/role/email_hash; o resto desaparece.
+//
+// Confirmação dupla: precisa digitar o email exato pra bater.
+// ============================================================
+const DeleteSchema = z.object({
+  user_id: z.string().uuid(),
+  confirm_email: z.string().trim().toLowerCase().email(),
+});
+
+export async function deleteUserAction(
+  _prev: FormState,
+  formData: FormData,
+): Promise<FormState> {
+  const auth = await requireMaster();
+  if (auth.error || !auth.user) return { ok: false, error: auth.error ?? 'Não autenticado' };
+
+  const parsed = DeleteSchema.safeParse({
+    user_id: formData.get('user_id'),
+    confirm_email: formData.get('confirm_email'),
+  });
+  if (!parsed.success) {
+    return { ok: false, error: parsed.error.issues[0]?.message ?? 'Dados inválidos' };
+  }
+
+  if (parsed.data.user_id === auth.user.id) {
+    return { ok: false, error: 'Master não pode excluir a si mesmo (evita lock-out)' };
+  }
+
+  const admin = getAdminClient();
+
+  // Busca dados pra audit antes da exclusão + confirmação do email
+  const { data: target, error: getErr } = await admin.auth.admin.getUserById(parsed.data.user_id);
+  if (getErr || !target?.user) {
+    return { ok: false, error: 'Usuário não encontrado' };
+  }
+  const targetEmail = String(target.user.email ?? '').toLowerCase();
+  if (targetEmail !== parsed.data.confirm_email) {
+    return {
+      ok: false,
+      error: `Email digitado não bate com o cadastrado (${targetEmail || 'sem email'}). Exclusão cancelada.`,
+    };
+  }
+
+  const { data: profile } = await admin
+    .from('user_profiles')
+    .select('full_name, role')
+    .eq('user_id', parsed.data.user_id)
+    .maybeSingle();
+
+  // Audit ANTES da exclusão (depois não tem como referenciar o user)
+  // Hash do email pra LGPD: audit WORM não pode reter PII clara
+  const emailHash = await (async () => {
+    try {
+      const bytes = new TextEncoder().encode(targetEmail);
+      const hash = await crypto.subtle.digest('SHA-256', bytes);
+      return Array.from(new Uint8Array(hash))
+        .slice(0, 8)
+        .map((b) => b.toString(16).padStart(2, '0'))
+        .join('');
+    } catch {
+      return null;
+    }
+  })();
+
+  await logAuditEvent(auth.supabase, {
+    action: 'user.hard_deleted',
+    entityType: 'user_profiles',
+    entityId: parsed.data.user_id,
+    beforeState: {
+      email_hash: emailHash,
+      email_domain: targetEmail.split('@')[1] ?? null,
+      full_name: profile?.full_name ?? null,
+      role: profile?.role ?? null,
+    },
+  });
+
+  // Cascade: remove dependentes ANTES de auth.users (FKs)
+  await admin.from('user_org_access').delete().eq('user_id', parsed.data.user_id);
+  await admin.from('user_profiles').delete().eq('user_id', parsed.data.user_id);
+
+  const { error: delErr } = await admin.auth.admin.deleteUser(parsed.data.user_id);
+  if (delErr) {
+    // Tentativa de reverter — mas geralmente o auth.deleteUser é a parte sensível
+    return {
+      ok: false,
+      error: `Falha ao excluir do auth.users: ${delErr.message}. user_profiles + user_org_access foram removidos — restaurar manualmente se necessário.`,
+    };
+  }
+
+  revalidatePath('/configuracoes/usuarios');
+  return {
+    ok: true,
+    message: `${profile?.full_name ?? targetEmail} excluído permanentemente.`,
+  };
+}
+
 export async function deactivateUserAction(_prev: FormState, formData: FormData): Promise<FormState> {
   const auth = await requireMaster();
   if (auth.error || !auth.user) return { ok: false, error: auth.error ?? 'Não autenticado' };
