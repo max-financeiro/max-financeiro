@@ -17,8 +17,13 @@ export type MiddlewareUserState = {
 
 type CookieToSet = { name: string; value: string; options: CookieOptions };
 
-export async function updateSession(request: NextRequest): Promise<MiddlewareUserState> {
-  let response = NextResponse.next({ request });
+export async function updateSession(
+  request: NextRequest,
+  requestHeaders?: Headers,
+): Promise<MiddlewareUserState> {
+  let response = NextResponse.next({
+    request: requestHeaders ? { headers: requestHeaders } : request,
+  });
 
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
@@ -36,7 +41,9 @@ export async function updateSession(request: NextRequest): Promise<MiddlewareUse
         for (const { name, value } of cookiesToSet) {
           request.cookies.set(name, value);
         }
-        response = NextResponse.next({ request });
+        response = NextResponse.next({
+          request: requestHeaders ? { headers: requestHeaders } : request,
+        });
         for (const { name, value, options } of cookiesToSet) {
           response.cookies.set(name, value, options);
         }

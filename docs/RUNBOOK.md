@@ -72,6 +72,40 @@
 3. Re-ativar DDA no internet banking BTG se desativado
 4. Reprocessar polling de boletos via API REST como rede de segurança
 
+### P8 — PIX duplicado (pagamento aparece 2× no extrato Inter)
+1. Buscar pelo mesmo `payable_id` em `payments`:
+   ```sql
+   SELECT id, idempotency_key, provider_request_id, provider_status, amount
+   FROM payments
+   WHERE payable_id = '<uuid>' AND provider_status IN ('paid','pending_approval');
+   ```
+2. Se houver 2+ rows: pegar o `provider_request_id` do "duplicado" e abrir chamado com Inter pra estorno.
+3. v1.0+ tem lock atômico em `requestPaymentAction` (UPDATE conditional no status) — duplicação só ocorre se uma das requests bypassou o lock; investigar via `audit.audit_log` action='cap.payment_requested'.
+4. Reverter manualmente: marcar 1 payment como `failed` no DB + restaurar `amount_paid` do CAP via SUM dos remaining `paid`.
+
+### P9 — Token Inter expirado / mTLS rejeitando
+1. Verificar `inter_credentials.last_validated_at` e `last_validation_status` (view `inter_connection_status`)
+2. Se status = 'failed': re-conectar via `/integracoes/inter` (Master only). Cert vencido = pegar novo no portal Inter.
+3. Webhook continua funcionando até cert ser revogado — só a saída pra API quebra.
+
+### P10 — Webhook Inter recebendo mas não processando
+1. Listar últimos eventos: `SELECT * FROM inter_webhook_events ORDER BY received_at DESC LIMIT 20;`
+2. Status `failed`: ler `error_message`. Comum: `INTER_WEBHOOK_SECRET` divergente entre Inter e Vercel.
+3. Validar IP allowlist (`INTER_WEBHOOK_IPS` em prod NÃO deve ser vazio — bloqueia se não bater).
+4. Replay manual de evento: re-POST o payload com header correto (idempotência cuida do resto via UNIQUE event_id).
+
+### P11 — Bling sync travado / `invalid_grant`
+1. Verificar `bling_credentials.last_refresh_at` e `refresh_locked_until`.
+2. Se `refresh_locked_until > NOW()`: outra instância fazendo refresh — espera 1min.
+3. Se `last_refresh_at` > 1h e ainda erro: refresh_token rotacionou + perdemos. Re-conectar via `/integracoes/bling`.
+4. v1.0+ tem singleton serialization em `RealBlingProvider.authenticate()` — não dispara refresh paralelo dentro da mesma instância.
+
+### P12 — Fechamento mensal travado (não consegue editar CAP/AR)
+1. Triggers `guard_closed_period_*` bloqueiam INSERT/UPDATE/DELETE em períodos fechados.
+2. Verificar: `SELECT * FROM accounting_periods WHERE year=X AND month=Y;`
+3. Pra reabrir: `/governanca/fechamento` → Master only → notes obrigatórias (≥10 chars).
+4. RPC `reopen_period(p_org, p_year, p_month, p_notes)` se precisar via SQL direto.
+
 ## Simulação trimestral
 
 Rodar pelo menos 1 playbook completo a cada trimestre. Documentar tempo real vs. esperado e ajustar runbook.

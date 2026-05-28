@@ -11,7 +11,7 @@
  *  4. Headers de segurança redundantes
  */
 import { NextResponse, type NextRequest } from 'next/server';
-import { generateNonce, buildCsp, CSP_NONCE_HEADER } from '@/lib/csp/nonce';
+import { generateNonce, buildCsp, CSP_NONCE_HEADER, NEXT_NONCE_HEADER } from '@/lib/csp/nonce';
 import { updateSession } from '@/lib/supabase/middleware';
 
 // Rotas totalmente públicas (sem qualquer guard).
@@ -59,7 +59,14 @@ export async function middleware(request: NextRequest) {
   const isDev = process.env.NODE_ENV !== 'production';
   const csp = buildCsp(nonce, isDev);
 
-  const { response, userId, aal } = await updateSession(request);
+  // Header `x-nonce` na REQUEST: Next.js detecta automaticamente e propaga
+  // o nonce em todos os scripts emitidos (hydration, chunks, Server Actions).
+  // Combinado com strict-dynamic + nonce-{nonce} no CSP da response, scripts
+  // injetados por XSS não rodam (não têm o nonce válido daquela request).
+  const requestHeaders = new Headers(request.headers);
+  requestHeaders.set(NEXT_NONCE_HEADER, nonce);
+
+  const { response, userId, aal } = await updateSession(request, requestHeaders);
   const path = request.nextUrl.pathname;
 
   const isPublic = isInList(path, PUBLIC_ROUTES);

@@ -1,11 +1,18 @@
 /**
  * CSP nonce — gerado por request em middleware.ts.
  *
- * Cada response carrega um nonce único de 16 bytes (base64) injetado no header
- * Content-Security-Policy e exposto como header customizado `x-csp-nonce`
- * pra Server Components lerem e aplicarem em <script>/<style> inline.
+ * Padrão Next.js 15: o middleware seta `x-nonce` no header da REQUEST
+ * (não da response). O Next.js detecta esse header e injeta o nonce
+ * automaticamente em todos os scripts que ele emite — incluindo
+ * hydration, chunks de Server Components e Server Actions. Em paralelo,
+ * o mesmo nonce vai no Content-Security-Policy header da RESPONSE.
  *
- * Sem nonce = scripts inline são bloqueados pelo CSP.
+ * Combinado com `'strict-dynamic'` em script-src, browsers modernos
+ * confiam em scripts nonced + scripts carregados por eles, ignorando
+ * `'unsafe-inline'` (que fica como fallback pra browsers antigos).
+ *
+ * Resultado: XSS via injeção de <script> não consegue rodar, mesmo se
+ * conseguir injetar HTML — falta o nonce válido daquela request.
  */
 
 export function generateNonce(): string {
@@ -16,31 +23,25 @@ export function generateNonce(): string {
 }
 
 /**
- * Monta a string CSP.
+ * Monta a string CSP com nonce + strict-dynamic em script-src.
  *
- * Sprint 1/2: usamos 'unsafe-inline' em script-src porque Next.js 15 +
- * React 19 emite scripts inline (hydration data) que precisariam de nonce
- * sincronizado pra serem permitidos. Coordenar nonce middleware → Next.js
- * é frágil (Next.js espera header `x-nonce`; valor precisa fluir pra
- * cada <script> emitido). Sem isso, `strict-dynamic` bloqueia silenciosa-
- * mente as Server Actions, que falham sem mensagem visível.
+ * `'strict-dynamic'` faz browsers modernos confiarem apenas em scripts
+ * nonced e seus descendentes diretos — `'unsafe-inline'` e `https:` ficam
+ * como fallback pra browsers velhos sem suporte (Safari < 15.4 ainda
+ * em campo). Browsers modernos ignoram esses tokens quando strict-dynamic
+ * está presente.
  *
- * Trade-off conhecido: 'unsafe-inline' enfraquece defesa contra XSS injetando
- * <script>. Mitigado por:
- *   - X-Frame-Options DENY (anti clickjacking)
- *   - Sem renderização de HTML user-input cru (React encoding por padrão)
- *   - object-src 'none' (anti Flash/plugin XSS)
- *   - frame-ancestors 'none'
- *   - HSTS preload
+ * style-src 'unsafe-inline' mantido — Tailwind + React injetam inline
+ * styles que não dá pra nonced em massa sem refactor amplo. Risco
+ * residual de CSS-injection é baixo (sem renderização HTML cru).
  *
- * Sprint 3+: reabilitar nonce de verdade seguindo o padrão Next.js (header
- * `x-nonce` em middleware + headers().get('x-nonce') no app), e voltar pra
- * strict-dynamic sem unsafe-inline.
+ * Em dev, 'unsafe-eval' é necessário pro React Refresh.
  */
-export function buildCsp(_nonce: string, isDev: boolean): string {
-  const scriptSrc = isDev
-    ? `'self' 'unsafe-inline' 'unsafe-eval' https://va.vercel-scripts.com https://browser.sentry-cdn.com`
-    : `'self' 'unsafe-inline' https://va.vercel-scripts.com https://browser.sentry-cdn.com`;
+export function buildCsp(nonce: string, isDev: boolean): string {
+  const evalForDev = isDev ? ` 'unsafe-eval'` : '';
+  const scriptSrc =
+    `'self' 'nonce-${nonce}' 'strict-dynamic'${evalForDev} 'unsafe-inline' https: ` +
+    `https://va.vercel-scripts.com https://browser.sentry-cdn.com`;
 
   const csp = [
     `default-src 'self'`,
@@ -59,4 +60,7 @@ export function buildCsp(_nonce: string, isDev: boolean): string {
   return csp;
 }
 
+/** Header customizado pra componentes que queiram ler o nonce no server. */
 export const CSP_NONCE_HEADER = 'x-csp-nonce' as const;
+/** Header consumido nativamente pelo Next.js pra propagar nonce nos scripts. */
+export const NEXT_NONCE_HEADER = 'x-nonce' as const;
