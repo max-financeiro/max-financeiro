@@ -23,7 +23,7 @@ export default async function IntegracoesHubPage() {
   const supabase = await createClient();
 
   // Status real das integrações já implementadas
-  const [bling, gemini, inter] = await Promise.all([
+  const [bling, gemini, inter, resend] = await Promise.all([
     supabase
       .from('bling_connection_status')
       .select('active, connected_at')
@@ -34,11 +34,17 @@ export default async function IntegracoesHubPage() {
       .select('active, model, connected_at, last_validation_status')
       .eq('active', true)
       .maybeSingle(),
-    // View inter_connection_status ainda não está nos types gerados — bypass localizado.
+    // Views inter/resend_connection_status ainda não estão nos types gerados — bypass localizado.
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     (supabase as any)
       .from('inter_connection_status')
       .select('active, environment, connected_at, webhook_registered_at')
+      .eq('active', true)
+      .maybeSingle(),
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (supabase as any)
+      .from('resend_connection_status')
+      .select('active, from_email, connected_at, last_validation_status')
       .eq('active', true)
       .maybeSingle(),
   ]);
@@ -116,10 +122,12 @@ export default async function IntegracoesHubPage() {
       slug: 'resend',
       name: 'Resend',
       category: 'Email',
-      description: 'Envio de emails transacionais (convites, confirmações, notificações).',
-      href: '/integracoes',
-      status: 'configured_env',
-      statusDetail: 'Configurado via RESEND_FROM_EMAIL no .env.',
+      description: 'Envio de emails transacionais — convites de usuário, mudança bancária, alertas.',
+      href: '/integracoes/resend',
+      status: resend?.data?.active ? 'connected' : 'not_connected',
+      statusDetail: resend?.data?.active
+        ? `From: ${resend.data.from_email}`
+        : 'Sem credencial — cadastre a API key do Resend.',
       brand: 'neutral',
     },
   ];
