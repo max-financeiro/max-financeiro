@@ -105,39 +105,98 @@ export async function inviteUserAction(_prev: FormState, formData: FormData): Pr
 
   const admin = getAdminClient();
 
-  // Cria auth.users (sem senha — primeiro acesso via magic link)
+  // ============================================================
+  // Cria auth.users (sem senha — primeiro acesso via magic link).
+  //
+  // Se email já existir, reaproveitamos o auth.users existente em vez
+  // de falhar. Cenários cobertos:
+  //   1. Email totalmente novo → cria auth + profile + access (caminho feliz)
+  //   2. Auth existe sem profile (órfão / supplier) → cria profile + access
+  //   3. Auth + profile ATIVO → erro "já cadastrado, veja na lista"
+  //   4. Auth + profile DESATIVADO → erro com sugestão de reativar
+  // ============================================================
+  let newUserId: string;
   const { data: created, error: createErr } = await admin.auth.admin.createUser({
     email: parsed.data.email,
     email_confirm: true,
     user_metadata: { invited_by: auth.user.id, role: parsed.data.role },
   });
 
-  if (createErr || !created.user) {
+  if (created?.user) {
+    newUserId = created.user.id;
+  } else if (createErr && /already.*registered|already exists/i.test(createErr.message)) {
+    // Procura o auth user existente (admin api não tem getUserByEmail, mas
+    // listUsers tem filtro implícito por email no v2)
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const { data: list } = await (admin.auth.admin as any).listUsers({ page: 1, perPage: 200 });
+    const emailLower = parsed.data.email.toLowerCase();
+    const existingAuth = (list?.users ?? []).find(
+      (u: { id: string; email?: string | null }) => (u.email ?? '').toLowerCase() === emailLower,
+    );
+    if (!existingAuth) {
+      return {
+        ok: false,
+        error: 'Email já registrado mas não consegui localizá-lo no auth — contate o suporte.',
+      };
+    }
+
+    // Verifica se já tem profile
+    const { data: existingProfile } = await admin
+      .from('user_profiles')
+      .select('user_id, full_name, deleted_at')
+      .eq('user_id', existingAuth.id)
+      .maybeSingle();
+
+    if (existingProfile && !existingProfile.deleted_at) {
+      return {
+        ok: false,
+        error: `${existingProfile.full_name} já está cadastrado(a) com esse email — veja na lista de usuários abaixo. Pra reenviar magic link, use o botão "Reenviar convite".`,
+      };
+    }
+    if (existingProfile && existingProfile.deleted_at) {
+      return {
+        ok: false,
+        error: `${existingProfile.full_name} está desativado(a) com esse email. Vá em "Desativados" e clique em "Reativar" pra restaurar o acesso.`,
+      };
+    }
+    // Auth órfão sem profile (ex: foi supplier antes, ou auth criado manualmente)
+    newUserId = existingAuth.id;
+  } else {
     return { ok: false, error: `Falha ao criar usuário: ${createErr?.message ?? 'desconhecido'}` };
   }
 
-  const newUserId = created.user.id;
-
-  // Cria user_profile
-  const { error: profileErr } = await admin.from('user_profiles').insert({
-    user_id: newUserId,
-    full_name: parsed.data.full_name,
-    role: parsed.data.role,
-  });
+  // Cria user_profile (upsert pra caso seja auth órfão)
+  const { error: profileErr } = await admin
+    .from('user_profiles')
+    .upsert(
+      {
+        user_id: newUserId,
+        full_name: parsed.data.full_name,
+        role: parsed.data.role,
+        deleted_at: null,
+      },
+      { onConflict: 'user_id' },
+    );
 
   if (profileErr) {
-    await admin.auth.admin.deleteUser(newUserId);
+    // Só apaga o auth user que NÓS criamos agora — não toca em órfão pré-existente
+    if (created?.user) {
+      await admin.auth.admin.deleteUser(newUserId);
+    }
     return { ok: false, error: `Falha ao criar perfil: ${profileErr.message}` };
   }
 
-  // Libera acesso às orgs
+  // Libera acesso às orgs (upsert pra não conflitar se reaproveitando)
   if (orgIds.length > 0) {
-    await admin.from('user_org_access').insert(
+    await admin.from('user_org_access').upsert(
       orgIds.map((orgId) => ({
         user_id: newUserId,
         organization_id: orgId,
         granted_by: auth.user!.id,
+        revoked_at: null,
+        granted_at: new Date().toISOString(),
       })),
+      { onConflict: 'user_id,organization_id' },
     );
   }
 
