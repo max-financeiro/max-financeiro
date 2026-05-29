@@ -253,9 +253,10 @@ export default async function GoogleDriveIntegrationPage({
               Focus continua — você nunca perde NF por causa do backup.
             </li>
             <li>
-              <strong>Scope OAuth:</strong> apenas
-              {' '}<code className="text-caption">drive.file</code> — só lê/escreve
-              arquivos criados por esta integração; resto do seu Drive fica intocado.
+              <strong>Scope OAuth:</strong> <code className="text-caption">drive</code>
+              {' '}(full access). Necessário pra enxergar pastas pré-existentes
+              compartilhadas via link. A app só toca a pasta configurada como raiz;
+              não há code path que enumere ou modifique nada fora dela.
             </li>
           </ul>
         </Card>

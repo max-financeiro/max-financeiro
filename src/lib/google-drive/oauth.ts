@@ -21,9 +21,18 @@ const GOOGLE_OAUTH_TOKEN = 'https://oauth2.googleapis.com/token';
 const GOOGLE_USERINFO = 'https://www.googleapis.com/oauth2/v3/userinfo';
 const TOKEN_EXPIRY_MARGIN_SECONDS = 300;
 
-/** Scopes mínimos: drive.file = só arquivos criados pela app. */
+/**
+ * Scope `drive` (full) é necessário pra acessar uma pasta JÁ EXISTENTE
+ * que não foi criada pela app — drive.file restrito não enxerga pastas
+ * compartilhadas via link, mesmo que o user logado seja owner.
+ *
+ * Trade-off: o token ganha acesso de leitura/escrita ao Drive inteiro
+ * do usuário autorizado. Mitigação: a app só toca a pasta configurada
+ * em root_folder_id; o resto fica intocado por convenção (não há
+ * code path que enumere ou modifique outros lugares).
+ */
 export const DRIVE_SCOPES = [
-  'https://www.googleapis.com/auth/drive.file',
+  'https://www.googleapis.com/auth/drive',
   'https://www.googleapis.com/auth/userinfo.email',
 ];
 
