@@ -9,6 +9,7 @@ export const dynamic = 'force-dynamic';
 
 interface SearchParams {
   connected?: string;
+  auto?: string;
   error?: string;
 }
 
@@ -86,11 +87,17 @@ export default async function GoogleDriveIntegrationPage({
       />
 
       {params.connected && (
-        <div className="rounded-lg border border-success-100 bg-success-50 px-4 py-3">
+        <div className="rounded-lg border border-success-100 bg-success-50 px-4 py-3 space-y-1">
           <p className="text-body-sm text-success-900">
             ✓ Conta conectada. Novos backups começam a partir do próximo sync Focus.
             Use o botão de backfill abaixo pra processar NFs históricas.
           </p>
+          {params.auto && (
+            <p className="text-caption text-success-800">
+              Pasta &ldquo;Financeiro Maxfem · Backup NF-e&rdquo; criada em Meu Drive
+              da conta autorizada. Pode mover/renomear no Drive sem quebrar a integração.
+            </p>
+          )}
         </div>
       )}
       {params.error && (

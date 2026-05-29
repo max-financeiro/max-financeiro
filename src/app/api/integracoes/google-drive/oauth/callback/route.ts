@@ -12,8 +12,10 @@ import { createClient } from '@/lib/supabase/server';
 // eslint-disable-next-line no-restricted-imports
 import { getAdminClient } from '@/lib/supabase/admin';
 import { exchangeCodeForTokens, fetchAccountEmail } from '@/lib/google-drive/oauth';
-import { getFolderInfo } from '@/lib/google-drive/client';
+import { getFolderInfo, createFolder } from '@/lib/google-drive/client';
 import { logAuditEvent } from '@/lib/auth/audit';
+
+const AUTO_FOLDER_NAME = 'Financeiro Maxfem · Backup NF-e';
 
 export const dynamic = 'force-dynamic';
 
@@ -37,8 +39,8 @@ export async function GET(req: Request) {
   }
   const clientId = cookieStore.get('gdrive_oauth_client_id')?.value;
   const clientSecret = cookieStore.get('gdrive_oauth_client_secret')?.value;
-  const folderId = cookieStore.get('gdrive_oauth_folder_id')?.value;
-  if (!clientId || !clientSecret || !folderId) {
+  const providedFolderId = cookieStore.get('gdrive_oauth_folder_id')?.value ?? '';
+  if (!clientId || !clientSecret) {
     redirect('/integracoes/google-drive?error=missing_session');
   }
 
@@ -73,14 +75,42 @@ export async function GET(req: Request) {
     redirect(`/integracoes/google-drive?error=${encodeURIComponent(tokens.error)}`);
   }
 
-  // Descobre email da conta + valida pasta
+  // Descobre email da conta
   const accountEmail = await fetchAccountEmail(tokens.accessToken);
   if (!accountEmail) {
     redirect('/integracoes/google-drive?error=no_email');
   }
-  const folder = await getFolderInfo({ accessToken: tokens.accessToken, folderId });
-  if (!folder.ok) {
-    redirect(`/integracoes/google-drive?error=${encodeURIComponent(folder.error)}`);
+
+  // Resolve pasta raiz: usa a fornecida se acessível, senão cria automática
+  // em "My Drive" da conta autorizada. IDs do Drive são estáveis a moves/renames,
+  // então o user pode mover a pasta auto-criada pra onde quiser depois.
+  let folderId = providedFolderId;
+  let folderName: string | null = null;
+  let folderAutoCreated = false;
+
+  if (providedFolderId) {
+    const folder = await getFolderInfo({ accessToken: tokens.accessToken, folderId: providedFolderId });
+    if (folder.ok) {
+      folderName = folder.data.name;
+    } else {
+      // 404 / sem permissão → cai pra auto-criação
+      folderAutoCreated = true;
+    }
+  } else {
+    folderAutoCreated = true;
+  }
+
+  if (folderAutoCreated) {
+    const created = await createFolder({
+      accessToken: tokens.accessToken,
+      name: AUTO_FOLDER_NAME,
+      parentId: 'root',                          // raiz do My Drive da conta
+    });
+    if (!created.ok) {
+      redirect(`/integracoes/google-drive?error=${encodeURIComponent(`Criar pasta: ${created.error}`)}`);
+    }
+    folderId = created.data.id;
+    folderName = created.data.name;
   }
 
   const encryptionKey = process.env.BANK_ENCRYPTION_KEY;
@@ -97,7 +127,7 @@ export async function GET(req: Request) {
     p_refresh_token: tokens.refreshToken,
     p_account_email: accountEmail,
     p_root_folder_id: folderId,
-    p_root_folder_name: folder.data.name,
+    p_root_folder_name: folderName,
     p_connected_by: user.id,
   });
   if (rpcErr) {
@@ -110,9 +140,11 @@ export async function GET(req: Request) {
     afterState: {
       account_email: accountEmail,
       root_folder_id: folderId,
-      root_folder_name: folder.data.name,
+      root_folder_name: folderName,
+      auto_created: folderAutoCreated,
     },
   });
 
-  redirect('/integracoes/google-drive?connected=1');
+  const redirectParams = folderAutoCreated ? 'connected=1&auto=1' : 'connected=1';
+  redirect(`/integracoes/google-drive?${redirectParams}`);
 }

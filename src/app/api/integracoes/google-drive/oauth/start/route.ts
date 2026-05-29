@@ -17,9 +17,9 @@ export async function GET(req: Request) {
   const url = new URL(req.url);
   const clientId = url.searchParams.get('client_id')?.trim() ?? '';
   const clientSecret = url.searchParams.get('client_secret')?.trim() ?? '';
-  const folderId = url.searchParams.get('folder_id')?.trim() ?? '';
+  const folderId = url.searchParams.get('folder_id')?.trim() ?? '';        // opcional
 
-  if (!clientId || !clientSecret || !folderId) {
+  if (!clientId || !clientSecret) {
     redirect('/integracoes/google-drive?error=missing_params');
   }
 
@@ -55,7 +55,8 @@ export async function GET(req: Request) {
   cookieStore.set('gdrive_oauth_state', state, cookieOpts);
   cookieStore.set('gdrive_oauth_client_id', clientId, cookieOpts);
   cookieStore.set('gdrive_oauth_client_secret', clientSecret, cookieOpts);
-  cookieStore.set('gdrive_oauth_folder_id', folderId, cookieOpts);
+  // folder_id é opcional: se vazio, o callback cria pasta automática
+  cookieStore.set('gdrive_oauth_folder_id', folderId || '', cookieOpts);
 
   const authUrl = buildAuthUrl({ clientId, redirectUri, state });
   redirect(authUrl);

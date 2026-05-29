@@ -21,12 +21,12 @@ export function ConnectGoogleDriveForm() {
 
   function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
-    if (!clientId || !clientSecret || !folderId) return;
+    if (!clientId || !clientSecret) return;
     const params = new URLSearchParams({
       client_id: clientId.trim(),
       client_secret: clientSecret.trim(),
-      folder_id: folderId,
     });
+    if (folderId) params.set('folder_id', folderId);
     window.location.href = `/api/integracoes/google-drive/oauth/start?${params.toString()}`;
   }
 
@@ -68,32 +68,29 @@ export function ConnectGoogleDriveForm() {
       </div>
 
       <div>
-        <label className="form-label">Pasta raiz no Drive *</label>
+        <label className="form-label">Pasta raiz no Drive (opcional)</label>
         <input
           type="text"
-          required
           value={folderInput}
           onChange={(e) => setFolderInput(e.target.value)}
-          placeholder="https://drive.google.com/drive/folders/1yZBC... ou só o ID"
+          placeholder="https://drive.google.com/drive/folders/... ou deixe em branco"
           className="input-field"
         />
         <p className="form-hint">
-          Cole a URL inteira ou só o ID. Detectamos automaticamente. Pastas YYYY/MM
-          serão criadas aqui dentro sob demanda.
+          Em branco: a app cria automaticamente a pasta
+          {' '}<strong>&ldquo;Financeiro Maxfem · Backup NF-e&rdquo;</strong> em
+          Meu Drive da conta que autorizar. Depois você pode arrastar pra onde
+          quiser — IDs do Drive não quebram com move/rename.
         </p>
         {folderInput && !folderId && (
-          <p className="text-caption text-rose-700 mt-1">
-            ID não detectado. Cole a URL completa ou um ID de 20+ chars alfanuméricos.
+          <p className="text-caption text-amber-700 mt-1">
+            ID não detectado na URL. Vou criar uma pasta nova em vez de usar essa.
           </p>
         )}
       </div>
 
       <div className="flex items-center justify-end gap-3 pt-2">
-        <Button
-          type="submit"
-          variant="pink"
-          disabled={!clientId || !clientSecret || !folderId}
-        >
+        <Button type="submit" variant="pink" disabled={!clientId || !clientSecret}>
           Conectar com Google
         </Button>
       </div>
