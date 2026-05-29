@@ -2,6 +2,7 @@ import type { Metadata } from 'next';
 import Link from 'next/link';
 import { createClient } from '@/lib/supabase/server';
 import { redirect } from 'next/navigation';
+import { OrgFilter } from '@/components/OrgFilter';
 
 export const metadata: Metadata = { title: 'Fluxo de caixa' };
 export const dynamic = 'force-dynamic';
@@ -20,7 +21,13 @@ function brl(n: number): string {
   return Number(n || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 }
 
-export default async function FluxoDeCaixaPage() {
+export default async function FluxoDeCaixaPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ org?: string }>;
+}) {
+  const params = await searchParams;
+  const orgFilter = params.org && params.org !== 'all' ? params.org : null;
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) redirect('/login');
@@ -45,13 +52,14 @@ export default async function FluxoDeCaixaPage() {
   const back30 = addDays(today, -30);
 
   // CAPs em aberto (aprovadas mas não pagas)
-  const { data: openCaps } = await supabase
+  let capsQuery = supabase
     .from('accounts_payable')
     .select(
       'id, reference_number, due_date, amount, amount_pending, status, supplier_id, business_partners(legal_name, trade_name), organizations(legal_name, trade_name)',
     )
-    .in('status', APPROVED_STATUSES)
-    .order('due_date', { ascending: true });
+    .in('status', APPROVED_STATUSES);
+  if (orgFilter) capsQuery = capsQuery.eq('organization_id', orgFilter);
+  const { data: openCaps } = await capsQuery.order('due_date', { ascending: true });
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const caps = (openCaps ?? []) as any[];
@@ -70,13 +78,15 @@ export default async function FluxoDeCaixaPage() {
 
   // Pagos nos últimos 30 dias (via bank_transactions matched, type=debit)
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const { data: paidRows } = await (supabase as any)
+  let paidQ = (supabase as any)
     .from('bank_transactions')
     .select('amount, type, transaction_date')
     .eq('status', 'matched')
     .eq('type', 'debit')
     .gte('transaction_date', back30)
     .lte('transaction_date', today);
+  if (orgFilter) paidQ = paidQ.eq('organization_id', orgFilter);
+  const { data: paidRows } = await paidQ;
   const totalPaid30 = ((paidRows ?? []) as Array<{ amount: number }>).reduce(
     (a, r) => a + Number(r.amount || 0),
     0,
@@ -84,11 +94,13 @@ export default async function FluxoDeCaixaPage() {
 
   // Contas a Receber em aberto + próximos 30d + atraso
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const { data: arRows } = await (supabase as any)
+  let arQ = (supabase as any)
     .from('accounts_receivable')
     .select('amount_pending, amount, status, due_date')
     .is('deleted_at', null)
     .in('status', ['pending', 'partially_received']);
+  if (orgFilter) arQ = arQ.eq('organization_id', orgFilter);
+  const { data: arRows } = await arQ;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const ars = (arRows ?? []) as any[];
   const arTotalOpen = ars.reduce((a, r) => a + Number(r.amount_pending ?? r.amount ?? 0), 0);
@@ -127,7 +139,7 @@ export default async function FluxoDeCaixaPage() {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const { data } = await (supabase as any).rpc('cashflow_projection', {
       p_group_id: group.id,
-      p_organization_id: null,
+      p_organization_id: orgFilter,
       p_days_ahead: 90,
     });
     projection = (data ?? []).map((r: ProjDay) => ({
@@ -152,16 +164,19 @@ export default async function FluxoDeCaixaPage() {
 
   return (
     <div className="max-w-6xl mx-auto p-6">
-      <header className="mb-6">
-        <h1 className="text-2xl font-semibold text-maxfem-pink">Fluxo de caixa</h1>
-        <p className="text-sm text-neutral-600 mt-1">
-          Posição realizada e compromissos. Considera CAPs aprovadas/agendadas e transações
-          bancárias conciliadas. Saldo real do banco depende do extrato sincronizado em{' '}
-          <Link href="/caixa/conciliacao" className="text-maxfem-pink hover:underline">
-            Conciliação Inter
-          </Link>
-          .
-        </p>
+      <header className="mb-6 flex items-end justify-between gap-4 flex-wrap">
+        <div>
+          <h1 className="text-2xl font-semibold text-maxfem-pink">Fluxo de caixa</h1>
+          <p className="text-sm text-neutral-600 mt-1">
+            Posição realizada e compromissos. Considera CAPs aprovadas/agendadas e transações
+            bancárias conciliadas. Saldo real do banco depende do extrato sincronizado em{' '}
+            <Link href="/caixa/conciliacao" className="text-maxfem-pink hover:underline">
+              Conciliação Inter
+            </Link>
+            .
+          </p>
+        </div>
+        <OrgFilter currentOrgId={orgFilter} basePath="/fluxo-de-caixa" />
       </header>
 
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">

@@ -1,6 +1,7 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
 import { createClient } from '@/lib/supabase/server';
+import { OrgFilter } from '@/components/OrgFilter';
 
 export const metadata: Metadata = { title: 'Dashboard executivo' };
 export const dynamic = 'force-dynamic';
@@ -80,7 +81,13 @@ interface ProjDay {
   running_balance: number;
 }
 
-export default async function DashboardPage() {
+export default async function DashboardPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ org?: string }>;
+}) {
+  const params = await searchParams;
+  const orgFilter = params.org && params.org !== 'all' ? params.org : null;
   const supabase = await createClient();
 
   const monthStart = startOfMonthISO();
@@ -119,7 +126,7 @@ export default async function DashboardPage() {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     (supabase as any).rpc('dre_summary', {
       p_group_id: group.id,
-      p_organization_id: null,
+      p_organization_id: orgFilter,
       p_date_from: monthStart,
       p_date_to: today,
       p_cost_center_id: null,
@@ -127,7 +134,7 @@ export default async function DashboardPage() {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     (supabase as any).rpc('dre_summary', {
       p_group_id: group.id,
-      p_organization_id: null,
+      p_organization_id: orgFilter,
       p_date_from: lastMonthStart,
       p_date_to: lastMonthEnd,
       p_cost_center_id: null,
@@ -135,13 +142,13 @@ export default async function DashboardPage() {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     (supabase as any).rpc('dashboard_revenue_trend', {
       p_group_id: group.id,
-      p_organization_id: null,
+      p_organization_id: orgFilter,
       p_months: 12,
     }),
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     (supabase as any).rpc('dashboard_top_accounts', {
       p_group_id: group.id,
-      p_organization_id: null,
+      p_organization_id: orgFilter,
       p_date_from: monthStart,
       p_date_to: today,
       p_limit: 5,
@@ -149,12 +156,12 @@ export default async function DashboardPage() {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     (supabase as any).rpc('dashboard_pendencias', {
       p_group_id: group.id,
-      p_organization_id: null,
+      p_organization_id: orgFilter,
     }),
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     (supabase as any).rpc('cashflow_projection', {
       p_group_id: group.id,
-      p_organization_id: null,
+      p_organization_id: orgFilter,
       p_days_ahead: 30,
     }),
   ]);
@@ -197,18 +204,21 @@ export default async function DashboardPage() {
         <div>
           <h1 className="text-2xl font-semibold text-maxfem-pink">Dashboard executivo</h1>
           <p className="text-sm text-neutral-600 mt-1">
-            Visão consolidada · {group.legal_name} · mês corrente (
+            {orgFilter ? 'Filial filtrada' : 'Visão consolidada'} · {group.legal_name} · mês corrente (
             {new Date(monthStart).toLocaleDateString('pt-BR', { day: '2-digit', month: 'long' })}
             {' '}até hoje)
           </p>
         </div>
-        <div className="flex items-center gap-2 text-xs">
-          <Link href="/dre" className="px-3 py-1.5 rounded-md border border-maxfem-pink text-maxfem-pink hover:bg-maxfem-pink hover:text-white transition">
-            Ver DRE detalhada →
-          </Link>
-          <Link href="/fluxo-de-caixa" className="px-3 py-1.5 rounded-md text-neutral-600 hover:text-maxfem-pink">
-            Fluxo de caixa
-          </Link>
+        <div className="flex items-end gap-3 flex-wrap">
+          <OrgFilter currentOrgId={orgFilter} basePath="/dashboard" />
+          <div className="flex items-center gap-2 text-xs">
+            <Link href="/dre" className="px-3 py-1.5 rounded-md border border-maxfem-pink text-maxfem-pink hover:bg-maxfem-pink hover:text-white transition">
+              Ver DRE detalhada →
+            </Link>
+            <Link href="/fluxo-de-caixa" className="px-3 py-1.5 rounded-md text-neutral-600 hover:text-maxfem-pink">
+              Fluxo de caixa
+            </Link>
+          </div>
         </div>
       </header>
 

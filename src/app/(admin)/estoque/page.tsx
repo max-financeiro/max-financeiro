@@ -4,6 +4,7 @@ import { redirect } from 'next/navigation';
 import { createClient } from '@/lib/supabase/server';
 import { formatBRL } from '@/lib/format';
 import { SyncBlingButton } from './SyncBlingButton';
+import { OrgFilter } from '@/components/OrgFilter';
 
 export const dynamic = 'force-dynamic';
 
@@ -16,12 +17,13 @@ const LOW_THRESHOLD = 10; // limiar default — viria de products.min_stock_leve
 export default async function EstoquePage({
   searchParams,
 }: {
-  searchParams: Promise<{ q?: string; filter?: Filter; armazem?: string }>;
+  searchParams: Promise<{ q?: string; filter?: Filter; armazem?: string; org?: string }>;
 }) {
   const params = await searchParams;
   const query = (params.q ?? '').trim();
   const filter: Filter = params.filter ?? 'todos';
   const warehouse = (params.armazem ?? '').trim();
+  const orgFilter = params.org && params.org !== 'all' ? params.org : null;
 
   const supabase = await createClient();
   const {
@@ -32,10 +34,11 @@ export default async function EstoquePage({
   // 1) Produtos (com filtros simples no server)
   let prodQ = supabase
     .from('products')
-    .select('id, sku, name, unit, price, cost, active, bling_synced_at')
+    .select('id, sku, name, unit, price, cost, active, bling_synced_at, organization_id')
     .order('name')
     .limit(500);
 
+  if (orgFilter) prodQ = prodQ.eq('organization_id', orgFilter);
   if (query) {
     prodQ = prodQ.or(`sku.ilike.%${query}%,name.ilike.%${query}%`);
   }
@@ -120,7 +123,8 @@ export default async function EstoquePage({
               : 'nunca — clique em Sincronizar Bling agora'}
           </p>
         </div>
-        <div className="flex items-center gap-3">
+        <div className="flex items-end gap-3 flex-wrap">
+          <OrgFilter currentOrgId={orgFilter} basePath="/estoque" />
           <Link
             href="/integracoes/bling"
             className="text-sm px-3 py-1.5 rounded-lg border border-neutral-300 hover:border-maxfem-pink hover:text-maxfem-pink transition"

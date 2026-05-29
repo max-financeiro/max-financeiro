@@ -2,8 +2,10 @@ import type { Metadata } from 'next';
 import Link from 'next/link';
 import { createClient } from '@/lib/supabase/server';
 import { formatBRL, formatDate } from '@/lib/format';
+import { OrgFilter } from '@/components/OrgFilter';
 
 export const metadata: Metadata = { title: 'Contas a pagar' };
+export const dynamic = 'force-dynamic';
 
 const STATUS_LABEL: Record<string, string> = {
   draft: 'Rascunho',
@@ -31,16 +33,22 @@ const STATUS_BADGE: Record<string, string> = {
   cancelled: 'bg-neutral-100 text-neutral-500',
 };
 
-export default async function ContasAPagarPage() {
+export default async function ContasAPagarPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ org?: string }>;
+}) {
+  const params = await searchParams;
+  const orgFilter = params.org && params.org !== 'all' ? params.org : null;
   const supabase = await createClient();
-  const { data: caps, error } = await supabase
+  let query = supabase
     .from('accounts_payable')
     .select(
       'id, reference_number, amount, amount_paid, due_date, status, approval_level_required, supplier_id, organization_id, business_partners(legal_name, trade_name), organizations(trade_name, legal_name)',
     )
-    .is('deleted_at', null)
-    .order('due_date', { ascending: true })
-    .limit(50);
+    .is('deleted_at', null);
+  if (orgFilter) query = query.eq('organization_id', orgFilter);
+  const { data: caps, error } = await query.order('due_date', { ascending: true }).limit(50);
 
   return (
     <div className="space-y-6">
@@ -53,20 +61,23 @@ export default async function ContasAPagarPage() {
             Alçada calculada por valor + 7 overrides anti-fraude.
           </p>
         </div>
-        <div className="flex items-center gap-2">
-          <Link
-            href="/contas-a-pagar/importar"
-            className="inline-flex items-center gap-2 px-4 py-2.5 rounded-lg bg-pink-600 text-white font-medium text-body-sm transition-all hover:bg-pink-700 active:scale-[0.98] shadow-sm hover:shadow-md"
-          >
-            <span>✦</span>
-            Importar com IA
-          </Link>
-          <Link
-            href="/contas-a-pagar/nova"
-            className="inline-flex items-center gap-2 px-4 py-2.5 rounded-lg bg-ink-900 text-surface-raised font-medium text-body-sm transition-all hover:bg-ink-700 active:scale-[0.98]"
-          >
-            + Nova CAP
-          </Link>
+        <div className="flex items-end gap-3 flex-wrap">
+          <OrgFilter currentOrgId={orgFilter} basePath="/contas-a-pagar" />
+          <div className="flex items-center gap-2">
+            <Link
+              href="/contas-a-pagar/importar"
+              className="inline-flex items-center gap-2 px-4 py-2.5 rounded-lg bg-pink-600 text-white font-medium text-body-sm transition-all hover:bg-pink-700 active:scale-[0.98] shadow-sm hover:shadow-md"
+            >
+              <span>✦</span>
+              Importar com IA
+            </Link>
+            <Link
+              href="/contas-a-pagar/nova"
+              className="inline-flex items-center gap-2 px-4 py-2.5 rounded-lg bg-ink-900 text-surface-raised font-medium text-body-sm transition-all hover:bg-ink-700 active:scale-[0.98]"
+            >
+              + Nova CAP
+            </Link>
+          </div>
         </div>
       </header>
 
