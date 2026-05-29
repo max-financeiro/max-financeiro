@@ -11,7 +11,7 @@ type IntegrationStatus = 'connected' | 'not_connected' | 'coming_soon' | 'config
 interface Integration {
   slug: string;
   name: string;
-  category: 'IA' | 'ERP' | 'Banco' | 'Email' | 'Segurança';
+  category: 'IA' | 'ERP' | 'Banco' | 'Email' | 'Segurança' | 'Backup';
   description: string;
   href: string;
   status: IntegrationStatus;
@@ -23,7 +23,7 @@ export default async function IntegracoesHubPage() {
   const supabase = await createClient();
 
   // Status real das integrações já implementadas
-  const [bling, gemini, inter, resend] = await Promise.all([
+  const [bling, gemini, inter, resend, gdrive] = await Promise.all([
     supabase
       .from('bling_connection_status')
       .select('active, connected_at')
@@ -45,6 +45,12 @@ export default async function IntegracoesHubPage() {
     (supabase as any)
       .from('resend_connection_status')
       .select('active, from_email, connected_at, last_validation_status')
+      .eq('active', true)
+      .maybeSingle(),
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (supabase as any)
+      .from('google_drive_connection_status')
+      .select('active, account_email, root_folder_name, connected_at')
       .eq('active', true)
       .maybeSingle(),
   ]);
@@ -129,6 +135,18 @@ export default async function IntegracoesHubPage() {
         ? `From: ${resend.data.from_email}`
         : 'Sem credencial — cadastre a API key do Resend.',
       brand: 'neutral',
+    },
+    {
+      slug: 'google-drive',
+      name: 'Google Drive',
+      category: 'Backup',
+      description: 'Backup de NF-e (DANFE + XML) puxadas do Focus, organizadas por ano/mês de competência.',
+      href: '/integracoes/google-drive',
+      status: gdrive?.data?.active ? 'connected' : 'not_connected',
+      statusDetail: gdrive?.data?.active
+        ? `${gdrive.data.account_email} · pasta ${gdrive.data.root_folder_name ?? '(sem nome)'}`
+        : 'Sem credencial — conecte um OAuth Drive.',
+      brand: 'amber',
     },
   ];
 

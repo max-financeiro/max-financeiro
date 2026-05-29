@@ -11,6 +11,7 @@
 import 'server-only';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { listReceivedNfes, parseAccessKey, type FocusEnvironment } from './client';
+import { backupNfToDrive } from '@/lib/google-drive/backup-nf';
 
 type FocusCredential = {
   organization_id: string;
@@ -106,24 +107,28 @@ export async function syncFocusReceivedNfes(
             continue;
           }
 
-          const { error: insErr } = await admin.from('fiscal_documents').insert({
-            organization_id: cred.organization_id,
-            direction: 'inbound',
-            document_type: 'nfe',
-            access_key: chave,
-            number: parsed.numero,
-            series: parsed.serie,
-            issue_date: issueDate,
-            competence_date: issueDate,
-            issuer_document: (nfe.documento_emitente || '').replace(/\D/g, ''),
-            issuer_name: nfe.nome_emitente || 'Emitente não identificado',
-            recipient_document: cred.cnpj,
-            recipient_name: null,
-            total_amount: Number(nfe.valor_total) || 0,
-            source: 'focus',
-            status: isCancelled ? 'cancelled' : 'orphan',
-            extracted_data: nfe,
-          });
+          const { data: inserted, error: insErr } = await admin
+            .from('fiscal_documents')
+            .insert({
+              organization_id: cred.organization_id,
+              direction: 'inbound',
+              document_type: 'nfe',
+              access_key: chave,
+              number: parsed.numero,
+              series: parsed.serie,
+              issue_date: issueDate,
+              competence_date: issueDate,
+              issuer_document: (nfe.documento_emitente || '').replace(/\D/g, ''),
+              issuer_name: nfe.nome_emitente || 'Emitente não identificado',
+              recipient_document: cred.cnpj,
+              recipient_name: null,
+              total_amount: Number(nfe.valor_total) || 0,
+              source: 'focus',
+              status: isCancelled ? 'cancelled' : 'orphan',
+              extracted_data: nfe,
+            })
+            .select('id')
+            .single();
 
           if (insErr) {
             // Corrida com outro sync (constraint única) → conta como skip
@@ -131,6 +136,16 @@ export async function syncFocusReceivedNfes(
           } else {
             if (isCancelled) result.cancelled += 1;
             else result.inserted += 1;
+            // Backup no Drive — best-effort, nunca derruba o sync.
+            // Falha (Drive desconectado, quota, etc) é gravada em
+            // fiscal_documents.drive_backup_error pra retry depois.
+            if (inserted?.id && !isCancelled) {
+              try {
+                await backupNfToDrive({ admin, fiscalDocumentId: inserted.id });
+              } catch (e) {
+                console.warn('[focus-sync] backup-drive falhou:', e instanceof Error ? e.message : String(e));
+              }
+            }
           }
         }
 

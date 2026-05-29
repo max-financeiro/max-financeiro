@@ -87,6 +87,20 @@ export async function downloadReceivedXml(
   return res.text();
 }
 
+/** Baixa o DANFE PDF de uma NFe recebida. Devolve Buffer ou null. */
+export async function downloadReceivedPdf(
+  token: string,
+  cnpj: string,
+  chave: string,
+  env: FocusEnvironment = 'producao',
+): Promise<Buffer | null> {
+  const url = `${baseUrl(env)}/v2/nfes_recebidas/${chave}.pdf?cnpj=${cnpj}`;
+  const res = await fetch(url, { headers: { Authorization: authHeader(token) } });
+  if (!res.ok) return null;
+  const ab = await res.arrayBuffer();
+  return Buffer.from(ab);
+}
+
 /**
  * Extrai número e série da chave de acesso de 44 dígitos.
  * Layout: cUF(2) AAMM(4) CNPJ(14) modelo(2) serie(3) numero(9) tpEmis(1) cNF(8) DV(1)

@@ -58,6 +58,7 @@ const SECTIONS: Section[] = [
       { href: '/integracoes/inter/webhooks', label: 'Webhooks Inter' },
       { href: '/integracoes/gemini', label: 'Gemini · IA' },
       { href: '/integracoes/resend', label: 'Resend · Email' },
+      { href: '/integracoes/google-drive', label: 'Google Drive · Backup NF' },
     ],
   },
   {

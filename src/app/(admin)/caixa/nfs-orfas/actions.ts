@@ -12,6 +12,7 @@ import { logAuditEvent } from '@/lib/auth/audit';
 import { getAdminClient } from '@/lib/supabase/admin';
 import { syncFocusReceivedNfes } from '@/lib/focus/sync';
 import { downloadReceivedXml } from '@/lib/focus/client';
+import { backupNfToDrive } from '@/lib/google-drive/backup-nf';
 
 const ApproveSchema = z.object({
   fiscal_document_id: z.string().uuid(),
@@ -129,6 +130,13 @@ export async function approveOrphanAction(_prev: ActionState, formData: FormData
 
   // O trigger já criou a CAP; baixa o XML da NF-e no Focus e anexa nela.
   const attached = await attachNfeXmlToCap(admin, updated[0] as ApprovedDoc, user.id);
+
+  // Backup no Google Drive (DANFE + XML em /YYYY/MM/) — best-effort
+  try {
+    await backupNfToDrive({ admin, fiscalDocumentId: parsed.data.fiscal_document_id });
+  } catch (err) {
+    console.warn('[approveOrphan] backup-drive falhou:', err instanceof Error ? err.message : String(err));
+  }
 
   await logAuditEvent(supabase, {
     action: 'fiscal_document.orphan_approved',
