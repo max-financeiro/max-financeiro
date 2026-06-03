@@ -1,7 +1,9 @@
 /**
  * google-drive/backup-nf.ts — backup de NF-e (XML + DANFE PDF) no Drive.
  *
- * Estrutura: <root>/<YYYY>/<MM>/<numero>-<emissor>.xml + .pdf
+ * Estrutura: <root>/<Matriz|Filial>/<YYYY>/<MM>/<numero>-<emissor>.xml + .pdf
+ * A pasta de filial vem da organization_id da NF (company=Matriz, branch=Filial),
+ * dando a cada CNPJ sua própria árvore — separação fiscal/SPED por filial.
  *
  * Idempotente: marca fiscal_documents.drive_backup_at após sucesso. Se
  * re-chamado pra mesma NF, faz curto-circuito (skip).
@@ -38,6 +40,20 @@ function sanitizeFileName(s: string, max = 120): string {
 
 function pad2(n: number): string {
   return n < 10 ? `0${n}` : String(n);
+}
+
+/**
+ * Nome da pasta da org receptora da NF no Drive — separa NF por filial/CNPJ.
+ * Usa o nome da org (trade_name → legal_name); cada entidade (Matriz, Filial MG,
+ * Filial SP, ...) ganha sua própria árvore. Fallback por type se não houver nome.
+ * Mantém espaços/acentos (Drive aceita); só corta tamanho e tira separador de path.
+ */
+function orgFolderName(org: { type?: string; trade_name?: string | null; legal_name?: string | null } | null): string {
+  const raw = String(org?.trade_name ?? org?.legal_name ?? '').replace(/[/\\]/g, '-').trim();
+  if (raw) return raw.slice(0, 80);
+  if (org?.type === 'branch') return 'Filial';
+  if (org?.type === 'company' || org?.type === 'group') return 'Matriz';
+  return 'Sem-Organizacao';
 }
 
 /**
@@ -83,17 +99,32 @@ export async function backupNfToDrive(input: BackupNfInput): Promise<BackupNfRes
     return { ok: false, error: 'Google Drive não conectado em /integracoes/google-drive' };
   }
 
-  // 4. Resolve pasta YYYY/MM da competência
+  // 4. Resolve pasta <Matriz|Filial>/YYYY/MM da competência
   const compDate = nf.competence_date ?? nf.issue_date;
   if (!compDate) return { ok: false, error: 'NF sem competence_date nem issue_date' };
   const d = new Date(`${String(compDate).slice(0, 10)}T00:00:00Z`);
   const year = d.getUTCFullYear();
   const month = pad2(d.getUTCMonth() + 1);
 
+  // 4a. Pasta de filial (raiz da árvore): separa NF da Matriz vs Filial pela org receptora.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const { data: org } = await (input.admin as any)
+    .from('organizations')
+    .select('type, trade_name, legal_name')
+    .eq('id', nf.organization_id)
+    .maybeSingle();
+
+  const filialFolder = await findOrCreateFolder({
+    accessToken: drive.accessToken,
+    name: orgFolderName(org),
+    parentId: drive.rootFolderId,
+  });
+  if (!filialFolder.ok) return { ok: false, error: filialFolder.error };
+
   const yearFolder = await findOrCreateFolder({
     accessToken: drive.accessToken,
     name: String(year),
-    parentId: drive.rootFolderId,
+    parentId: filialFolder.data.id,
   });
   if (!yearFolder.ok) return { ok: false, error: yearFolder.error };
 

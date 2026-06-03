@@ -247,8 +247,8 @@ export default async function GoogleDriveIntegrationPage({
               (XML + DANFE PDF) na pasta correspondente.
             </li>
             <li>
-              <strong>Estrutura:</strong> <code className="text-caption">/&lt;raiz&gt;/&lt;YYYY&gt;/&lt;MM&gt;/NF&lt;número&gt;_&lt;emissor&gt;_&lt;chave_curta&gt;.{`{xml,pdf}`}</code>
-              — pastas YYYY/MM criadas sob demanda.
+              <strong>Estrutura:</strong> <code className="text-caption">/&lt;raiz&gt;/&lt;empresa/filial&gt;/&lt;YYYY&gt;/&lt;MM&gt;/NF&lt;número&gt;_&lt;emissor&gt;_&lt;chave_curta&gt;.{`{xml,pdf}`}</code>
+              — separadas por filial (ex.: Maxfem Matriz, Maxfem Filial SP) e depois YYYY/MM, criadas sob demanda.
             </li>
             <li>
               <strong>Idempotente:</strong> NF já backupada não é re-enviada.
