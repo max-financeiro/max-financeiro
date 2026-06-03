@@ -21,6 +21,11 @@ const PUBLIC_ROUTES = [
   '/login',
   '/portal/login',
   '/portal/entrar',
+  // /entrar é o magic link de primeiro acesso do ADMIN: é ELE quem cria a
+  // sessão (verifyOtp server-side). Sem isto, o middleware barra por "no user"
+  // ANTES do route handler rodar e joga pra /login — travando o convite.
+  // A rota se auto-protege pelo token de uso único (?t=).
+  '/entrar',
   '/auth/callback',
   '/api/health',
   // Webhooks de banco (Inter etc): chamados por sistemas externos sem sessão.
