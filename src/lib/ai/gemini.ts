@@ -21,6 +21,20 @@ import 'server-only';
 
 const GEMINI_BASE = 'https://generativelanguage.googleapis.com/v1beta';
 
+// Status transitórios do Gemini (sobrecarga/instabilidade) — vale retry com backoff.
+const RETRYABLE_STATUS = new Set([429, 500, 502, 503, 504]);
+const MAX_ATTEMPTS = 4;
+
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+/** Backoff exponencial com jitter: ~0.6s, 1.2s, 2.4s. Respeita Retry-After (s) se vier. */
+function backoffMs(attempt: number, retryAfterHeader: string | null): number {
+  const retryAfter = retryAfterHeader ? Number(retryAfterHeader) : NaN;
+  if (Number.isFinite(retryAfter) && retryAfter > 0) return Math.min(retryAfter * 1000, 15_000);
+  const base = 600 * 2 ** (attempt - 1);
+  return base + Math.floor(Math.random() * 400);
+}
+
 export type GeminiModel = 'gemini-flash-latest' | 'gemini-pro-latest' | string;
 
 export interface GeminiValidationResult {
@@ -185,34 +199,53 @@ export async function generateFromDocument(opts: GeminiGenerateOpts): Promise<st
     body.systemInstruction = { parts: [{ text: opts.systemInstruction }] };
   }
 
-  const res = await fetch(`${GEMINI_BASE}/models/${opts.model}:generateContent`, {
-    method: 'POST',
-    headers: {
-      'x-goog-api-key': opts.apiKey,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify(body),
-  });
+  // Retry com backoff: o Gemini devolve 503 ("high demand") de forma intermitente.
+  for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+    let res: Response;
+    try {
+      res = await fetch(`${GEMINI_BASE}/models/${opts.model}:generateContent`, {
+        method: 'POST',
+        headers: {
+          'x-goog-api-key': opts.apiKey,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(body),
+      });
+    } catch (netErr) {
+      // Falha de rede/timeout — trata como transitória
+      if (attempt < MAX_ATTEMPTS) {
+        await sleep(backoffMs(attempt, null));
+        continue;
+      }
+      throw new Error(`Gemini API rede: ${netErr instanceof Error ? netErr.message : 'erro desconhecido'}`);
+    }
 
-  const data = (await res.json()) as GeminiResponse;
+    const data = (await res.json().catch(() => ({}))) as GeminiResponse;
 
-  if (!res.ok || data.error) {
-    throw new Error(
-      `Gemini API ${res.status}: ${data.error?.message ?? 'erro desconhecido'}`,
-    );
+    if (!res.ok || data.error) {
+      const err = new Error(`Gemini API ${res.status}: ${data.error?.message ?? 'erro desconhecido'}`);
+      if (RETRYABLE_STATUS.has(res.status) && attempt < MAX_ATTEMPTS) {
+        await sleep(backoffMs(attempt, res.headers.get('retry-after')));
+        continue;
+      }
+      throw err;
+    }
+
+    const blocked = data.promptFeedback?.blockReason;
+    if (blocked) {
+      throw new Error(`Gemini bloqueou a requisição: ${blocked}`);
+    }
+
+    const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
+    if (!text) {
+      throw new Error('Gemini retornou resposta vazia');
+    }
+
+    return text;
   }
 
-  const blocked = data.promptFeedback?.blockReason;
-  if (blocked) {
-    throw new Error(`Gemini bloqueou a requisição: ${blocked}`);
-  }
-
-  const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
-  if (!text) {
-    throw new Error('Gemini retornou resposta vazia');
-  }
-
-  return text;
+  // Inalcançável (o loop sempre retorna ou lança), mas satisfaz o type-checker.
+  throw new Error('Gemini API: tentativas esgotadas');
 }
 
 /**
